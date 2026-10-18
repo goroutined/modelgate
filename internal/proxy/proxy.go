@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	maxBodyRecord = 64 * 1024 // 请求/响应体归档上限，超出截断
+	maxBodyRecord = 8 * 1024 * 1024 // 请求/响应体归档上限；Codex 长上下文请求可达数 MB，太小会导致归档 JSON 无法解析
 	maxChunkLen   = 16 * 1024 // 单个 SSE 分包归档上限
 )
 
@@ -83,14 +83,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"策略 config 无效，需要 upstream_key_id"}`, http.StatusInternalServerError)
 		return
 	}
-	realKey, baseURL, upstreamID, err := h.store.UpstreamKeyWithUpstream(cfg.UpstreamKeyID, cfg.Protocol)
+	// 协议路由：按请求路径判定客户端实际使用的协议；策略显式指定协议时必须匹配
+	pathProto := protoFromPath(r.URL.Path)
+	if cfg.Protocol != "" && cfg.Protocol != pathProto {
+		http.Error(w, fmt.Sprintf(`{"error":"策略指定协议 %q 与请求路径 %q 的协议 %q 不匹配"}`, cfg.Protocol, r.URL.Path, pathProto), http.StatusBadRequest)
+		return
+	}
+	realKey, baseURL, upstreamID, err := h.store.UpstreamKeyWithUpstream(cfg.UpstreamKeyID, pathProto)
 	if err != nil {
 		http.Error(w, `{"error":"真实 key 或协议端点不可用：`+sanitizeErr(err)+`"}`, http.StatusServiceUnavailable)
 		return
 	}
 
-	// 3. 读取并记录请求体（转发前读全量；对话请求体通常不大）
-	reqBody, _ := io.ReadAll(io.LimitReader(r.Body, maxBodyRecord+1))
+	// 3. 全量读取请求体：转发必须完整（截断会让上游收到非法 JSON），
+	//    maxBodyRecord 上限只用于入库归档，不影响转发
+	reqBody, _ := io.ReadAll(r.Body)
 	model := extractModel(reqBody)
 	// 注意：必须在 copyHeaders 之前归档请求头（copyHeaders 会从原 header 删除 Authorization）
 	reqHeadersRedacted := redactHeaders(r.Header)
@@ -103,14 +110,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"stream":  bodyIsStream(reqBody),
 	})
 
-	// 4. 构造上游请求：同路径同方法透传，替换 Authorization
-	target := strings.TrimRight(baseURL, "/") + r.URL.Path
+	// 4. 构造上游请求：剥离客户端挂载前缀（/v1、/anthropic）再拼 baseURL，
+	//    modellink 的 baseURL 已含版本段（如 …/v4、…/v1），原样拼接会出现 /v1/v1 双重路径
+	target := strings.TrimRight(baseURL, "/") + stripMount(r.URL.Path, pathProto)
 	if r.URL.RawQuery != "" {
 		target += "?" + r.URL.RawQuery
 	}
 	upReq, err := http.NewRequestWithContext(r.Context(), r.Method, target, bytes.NewReader(reqBody))
 	if err != nil {
-		h.recordFailure(vk, upstreamID, cfg.UpstreamKeyID, r, model, "", err, startMS)
+		h.recordFailure(vk, upstreamID, cfg.UpstreamKeyID, r, model, string(reqBody), target, err, startMS)
 		http.Error(w, `{"error":"构造上游请求失败"}`, http.StatusBadGateway)
 		return
 	}
@@ -121,7 +129,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.client.Do(upReq)
 	upstreamMS := time.Since(start).Milliseconds() // 上游响应头到达（近似发出+首包）
 	if err != nil {
-		h.recordFailure(vk, upstreamID, cfg.UpstreamKeyID, r, model, "", err, startMS)
+		h.recordFailure(vk, upstreamID, cfg.UpstreamKeyID, r, model, string(reqBody), target, err, startMS)
 		http.Error(w, fmt.Sprintf(`{"error":"上游请求失败: %s"}`, sanitizeErr(err)), http.StatusBadGateway)
 		return
 	}
@@ -148,7 +156,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		findModel: func() *store.UpstreamModel { return h.store.FindModel(upstreamID, model) },
 		vk: vk, upstreamID: upstreamID, keyID: cfg.UpstreamKeyID,
 		method: r.Method, path: r.URL.Path, model: model,
-		reqBody: string(reqBody), reqHeaders: reqHeadersRedacted,
+		upstreamURL: target,
+		reqBody: truncate(string(reqBody), maxBodyRecord), reqHeaders: reqHeadersRedacted,
 		respHeaders: redactHeaders(resp.Header),
 		startMS: startMS, upstreamMS: upstreamMS, stream: isSSE,
 	}
@@ -174,6 +183,7 @@ type callRecorder struct {
 	keyID      int64
 	method     string
 	path       string
+	upstreamURL string
 	model      string
 	reqBody     string
 	reqHeaders  string
@@ -288,20 +298,51 @@ func (c *callRecorder) computeCost() (*float64, *float64) {
 
 // mergeUsage 尽力从 JSON 中提取 usage 字段（流式取最后一个 chunk 的 usage）。
 func (u *usageInfo) mergeUsage(data []byte) {
-	var m struct {
-		Usage *struct {
-			PromptTokens     int64 `json:"prompt_tokens"`
-			CompletionTokens int64 `json:"completion_tokens"`
-			TotalTokens      int64 `json:"total_tokens"`
-			PromptDetails    *struct {
-				CachedTokens int64 `json:"cached_tokens"`
-			} `json:"prompt_tokens_details"`
-		} `json:"usage"`
+	type usage struct {
+		PromptTokens     int64 `json:"prompt_tokens"`
+		InputTokens      int64 `json:"input_tokens"` // anthropic / responses API 的 prompt 对应字段
+		CompletionTokens int64 `json:"completion_tokens"`
+		OutputTokens     int64 `json:"output_tokens"` // responses API 的 completion 对应字段
+		TotalTokens      int64 `json:"total_tokens"`
+		PromptDetails    *struct {
+			CachedTokens int64 `json:"cached_tokens"`
+		} `json:"prompt_tokens_details"`
+		InputDetails *struct {
+			CachedTokens int64 `json:"cached_tokens"`
+		} `json:"input_tokens_details"`
 	}
-	if json.Unmarshal(data, &m) == nil && m.Usage != nil && m.Usage.TotalTokens > 0 {
-		u.Prompt, u.Completion, u.Total = m.Usage.PromptTokens, m.Usage.CompletionTokens, m.Usage.TotalTokens
-		if m.Usage.PromptDetails != nil {
-			u.CachedInput = m.Usage.PromptDetails.CachedTokens
+	// anthropic: usage 里 input/output tokens 单位不同字段名，这里只认 total_tokens>0 的通用结构
+	var m struct {
+		Usage *usage `json:"usage"`
+		// Responses API：最后一个 response.completed 事件里 usage 挂在 response 下
+		Response *struct {
+			Usage *usage `json:"usage"`
+		} `json:"response"`
+	}
+	if json.Unmarshal(data, &m) == nil {
+		got := m.Usage
+		if got == nil && m.Response != nil {
+			got = m.Response.Usage
+		}
+		if got != nil && (got.TotalTokens > 0 || (got.InputTokens > 0 && got.OutputTokens > 0)) {
+			u.Prompt = got.PromptTokens
+			if u.Prompt == 0 {
+				u.Prompt = got.InputTokens
+			}
+			u.Completion = got.CompletionTokens
+			if u.Completion == 0 {
+				u.Completion = got.OutputTokens
+			}
+			u.Total = got.TotalTokens
+			if u.Total == 0 {
+				u.Total = u.Prompt + u.Completion // anthropic 无 total，自行求和
+			}
+			if got.PromptDetails != nil {
+				u.CachedInput = got.PromptDetails.CachedTokens
+			}
+			if got.InputDetails != nil {
+				u.CachedInput = got.InputDetails.CachedTokens
+			}
 		}
 	}
 }
@@ -312,11 +353,12 @@ func (c *callRecorder) finish(status int) {
 	costCNY, costPoints := c.computeCost()
 	nc := store.NewCall{
 		VirtualKeyID: &c.vk.ID, UpstreamID: &c.upstreamID, UpstreamKeyID: &c.keyID,
-		Method: c.method, Path: c.path, Model: c.model, StatusCode: &status,
+		Method: c.method, Path: c.path, UpstreamURL: c.upstreamURL, Model: c.model, StatusCode: &status,
 		ReqHeaders: c.reqHeaders, ReqBody: c.reqBody,
 		RespHeaders: c.respHeaders, RespBody: truncate(c.respBody.String(), maxBodyRecord),
 		Stream: c.stream, ChunkCount: len(c.chunks),
 		PromptTokens: &c.usage.Prompt, CompletionTokens: &c.usage.Completion, TotalTokens: &c.usage.Total,
+		PromptCached: func() *int64 { if c.usage.CachedInput > 0 { return &c.usage.CachedInput }; return nil }(),
 		CostCNY: costCNY, CostPoints: costPoints,
 		StartedAt: c.startMS, UpstreamMS: &c.upstreamMS, FirstByteMS: &c.firstByte, EndedAt: &end,
 	}
@@ -344,13 +386,12 @@ func (c *callRecorder) finish(status int) {
 }
 
 // recordFailure 上游未响应等失败场景也要留痕。
-func (h *Handler) recordFailure(vk *store.VirtualKey, upstreamID, keyID int64, r *http.Request, model string, path string, err error, startMS int64) {
-	body, _ := io.ReadAll(io.LimitReader(r.Body, maxBodyRecord))
+func (h *Handler) recordFailure(vk *store.VirtualKey, upstreamID, keyID int64, r *http.Request, model, reqBody, upstreamURL string, err error, startMS int64) {
 	end := time.Now().UnixMilli()
 	h.store.InsertCall(store.NewCall{
 		VirtualKeyID: &vk.ID, UpstreamID: &upstreamID, UpstreamKeyID: &keyID,
-		Method: r.Method, Path: r.URL.Path, Model: model,
-		ReqHeaders: redactHeaders(r.Header), ReqBody: string(body),
+		Method: r.Method, Path: r.URL.Path, UpstreamURL: upstreamURL, Model: model,
+		ReqHeaders: redactHeaders(r.Header), ReqBody: truncate(reqBody, maxBodyRecord),
 		Error: truncate(sanitizeErr(err), 1024), StartedAt: startMS, EndedAt: &end,
 	})
 	h.hub.Publish("call_end", map[string]any{
@@ -359,6 +400,32 @@ func (h *Handler) recordFailure(vk *store.VirtualKey, upstreamID, keyID int64, r
 }
 
 // ---------- 工具 ----------
+
+// protoFromPath 按客户端请求路径判定协议：/anthropic → anthropic-compatible；
+// /responses 结尾 → openai-responses；其余（/v1/chat/completions 等）→ openai-compatible。
+func protoFromPath(p string) string {
+	if strings.HasPrefix(p, "/anthropic") {
+		return "anthropic-compatible"
+	}
+	if strings.HasSuffix(p, "/responses") {
+		return "openai-responses"
+	}
+	return "openai-compatible"
+}
+
+// stripMount 剥离客户端侧协议挂载前缀：客户端 baseURL 是 modelgate 根（/v1、/anthropic），
+// 上游 baseURL 已含自己的版本段，二者不能叠加。
+func stripMount(p, proto string) string {
+	prefix := "/v1"
+	if proto == "anthropic-compatible" {
+		prefix = "/anthropic"
+	}
+	p = strings.TrimPrefix(p, prefix)
+	if p == "" {
+		p = "/"
+	}
+	return p
+}
 
 func copyHeaders(dst, src http.Header) {
 	for _, skip := range []string{"Authorization", "Host", "Content-Length", "Connection", "Transfer-Encoding"} {

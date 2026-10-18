@@ -18,6 +18,7 @@ type Call struct {
 	UpstreamKeyLabel string  `json:"upstream_key_label"`
 	Method           string  `json:"method"`
 	Path             string  `json:"path"`
+	UpstreamURL      string  `json:"upstream_url"`
 	Model            string  `json:"model"`
 	StatusCode       *int    `json:"status_code"`
 	ReqHeaders       string  `json:"req_headers"`
@@ -29,6 +30,7 @@ type Call struct {
 	PromptTokens     *int64  `json:"prompt_tokens"`
 	CompletionTokens *int64  `json:"completion_tokens"`
 	TotalTokens      *int64  `json:"total_tokens"`
+	PromptCached     *int64  `json:"prompt_cached_tokens"`
 	CostCNY          *float64 `json:"cost_cny"`
 	CostPoints       *float64 `json:"cost_points"`
 	Error            string  `json:"error"`
@@ -55,6 +57,7 @@ type NewCall struct {
 	UpstreamKeyID    *int64
 	Method           string
 	Path             string
+	UpstreamURL      string
 	Model            string
 	StatusCode       *int
 	ReqHeaders       string
@@ -66,6 +69,7 @@ type NewCall struct {
 	PromptTokens     *int64
 	CompletionTokens *int64
 	TotalTokens      *int64
+	PromptCached     *int64
 	CostCNY          *float64
 	CostPoints       *float64
 	Error            string
@@ -77,14 +81,14 @@ type NewCall struct {
 
 // InsertCall 写入调用记录并返回 id。
 func (s *Store) InsertCall(c NewCall) (int64, error) {
-	res, err := s.db.Exec(`INSERT INTO calls(virtual_key_id, upstream_id, upstream_key_id, method, path, model,
+	res, err := s.db.Exec(`INSERT INTO calls(virtual_key_id, upstream_id, upstream_key_id, method, path, upstream_url, model,
 		status_code, req_headers, req_body, resp_headers, resp_body, stream, chunk_count,
-		prompt_tokens, completion_tokens, total_tokens, cost_cny, cost_points, error,
+		prompt_tokens, completion_tokens, total_tokens, prompt_cached_tokens, cost_cny, cost_points, error,
 		started_at, upstream_ms, first_byte_ms, ended_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		c.VirtualKeyID, c.UpstreamID, c.UpstreamKeyID, c.Method, c.Path, c.Model,
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		c.VirtualKeyID, c.UpstreamID, c.UpstreamKeyID, c.Method, c.Path, c.UpstreamURL, c.Model,
 		c.StatusCode, c.ReqHeaders, c.ReqBody, c.RespHeaders, c.RespBody, c.Stream, c.ChunkCount,
-		c.PromptTokens, c.CompletionTokens, c.TotalTokens, c.CostCNY, c.CostPoints, c.Error,
+		c.PromptTokens, c.CompletionTokens, c.TotalTokens, c.PromptCached, c.CostCNY, c.CostPoints, c.Error,
 		c.StartedAt, c.UpstreamMS, c.FirstByteMS, c.EndedAt)
 	if err != nil {
 		return 0, err
@@ -125,16 +129,16 @@ type CallFilter struct {
 }
 
 const callCols = `c.id, c.virtual_key_id, vk.key, u.name, k.label,
-	c.method, c.path, c.model, c.status_code, c.req_headers, c.req_body, c.resp_headers, c.resp_body,
-	c.stream, c.chunk_count, c.prompt_tokens, c.completion_tokens, c.total_tokens,
+	c.method, c.path, c.upstream_url, c.model, c.status_code, c.req_headers, c.req_body, c.resp_headers, c.resp_body,
+	c.stream, c.chunk_count, c.prompt_tokens, c.completion_tokens, c.total_tokens, c.prompt_cached_tokens,
 	c.cost_cny, c.cost_points, c.error,
 	c.started_at, c.upstream_ms, c.first_byte_ms, c.ended_at, COALESCE(c.ended_at,0) - c.started_at`
 
 func scanCall(row interface{ Scan(...any) error }) (*Call, error) {
 	c := &Call{}
 	err := row.Scan(&c.ID, &c.VirtualKeyID, &c.VirtualKey, &c.UpstreamName, &c.UpstreamKeyLabel,
-		&c.Method, &c.Path, &c.Model, &c.StatusCode, &c.ReqHeaders, &c.ReqBody, &c.RespHeaders, &c.RespBody,
-		&c.Stream, &c.ChunkCount, &c.PromptTokens, &c.CompletionTokens, &c.TotalTokens,
+		&c.Method, &c.Path, &c.UpstreamURL, &c.Model, &c.StatusCode, &c.ReqHeaders, &c.ReqBody, &c.RespHeaders, &c.RespBody,
+		&c.Stream, &c.ChunkCount, &c.PromptTokens, &c.CompletionTokens, &c.TotalTokens, &c.PromptCached,
 		&c.CostCNY, &c.CostPoints, &c.Error,
 		&c.StartedAt, &c.UpstreamMS, &c.FirstByteMS, &c.EndedAt, &c.DurationMS)
 	if errors.Is(err, sql.ErrNoRows) {

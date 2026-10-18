@@ -48,6 +48,8 @@
   .seg { display:inline-flex; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:2px; gap:2px; }
   .seg button { background:none; border:none; color:var(--dim); padding:3px 10px; border-radius:6px; cursor:pointer; font-size:12px; }
   .seg button.on { background:var(--panel); color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,.2); }
+  #theme-seg { width:100%; }
+  #theme-seg button { flex:1; padding:3px 2px; white-space:nowrap; } /* 侧栏窄，三键等分不折行 */
   /* 自定义确认弹层：替代原生 confirm，可携带影响面提示 */
   #cf { position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; z-index:90; align-items:center; justify-content:center; }
   #cf.open { display:flex; }
@@ -59,6 +61,7 @@
   .empty b { display:block; margin-bottom:6px; color:var(--text); font-size:14px; }
   /* 展开块用强调色描边，与收起状态区分 */
   .edit-box, #custom-form { border-left:3px solid var(--accent); }
+  tr.edit-row > td { background:var(--bg); border-left:3px solid var(--accent); }
   .sec:has(.sec-body:not(.hidden)) > .sec-hdr { border-left:3px solid var(--accent); padding-left:7px; }
   .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0; }
   .badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px; background:var(--line); }
@@ -76,6 +79,7 @@
     #side-toggle { display:block !important; }
     main { padding:14px 12px 20px; }
     table { display:block; overflow-x:auto; }
+    #klog-drawer { width:100vw !important; max-width:none !important; }
     .row { gap:6px; }
   }
   code { background:var(--bg); padding:1px 5px; border-radius:4px; font-size:12px; }
@@ -92,7 +96,11 @@
   .phase-band { display:flex; height:10px; border-radius:3px; overflow:hidden; margin:6px 0 2px; background:var(--line); }
   .phase-band i { display:block; min-width:2px; }
   .ph-send { background:#4f8cff; } .ph-wait { background:#e0a83c; }
-  .ph-first { background:#a78bfa; } .ph-out { background:#38b2a3; }
+  /* 阶段色：与 viewer 一致 First token(紫红) / Thinking(蓝) / Output(青) / Toolcall(黄) */
+  .ph-first { background:#c586c0; } .ph-think { background:#569cd6; } .ph-out { background:#4ec9b0; } .ph-tool { background:#dcdcaa; }
+  /* 阶段图例：viewer 规范命名 */
+  .wf-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--dim); padding:2px 2px 8px; }
+  .wf-legend i { display:inline-block; width:14px; height:8px; border-radius:2px; margin-right:4px; vertical-align:middle; }
   .phase-legend { display:flex; gap:10px; font-size:11px; color:var(--dim); margin:2px 0 10px; flex-wrap:wrap; }
   .phase-legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:3px; vertical-align:-1px; }
   /* 折叠分区 */
@@ -114,7 +122,7 @@
   .chunk-row { display:flex; gap:8px; padding:2px 6px; border-radius:4px; font-size:11px; }
   .chunk-row:hover { background:var(--bg); }
   .chunk-meta { color:var(--dim); white-space:nowrap; font-family:ui-monospace,monospace; width:170px; flex-shrink:0; }
-  .chunk-data { font-family:ui-monospace,monospace; overflow:auto; max-width:520px; white-space:nowrap; }
+  .chunk-data { font-family:ui-monospace,monospace; white-space:pre-wrap; word-break:break-all; } /* 全宽自动换行，不限宽 */
   .sse-data { font-family:ui-monospace,monospace; white-space:pre-wrap; word-break:break-all; width:100%; display:block; }
   /* 详情全屏 */
   .klog-right.fullscreen { position:fixed; inset:0; z-index:100; max-height:none; border-radius:0; }
@@ -125,7 +133,7 @@
   /* 横排时间轴行 */
   .wf-group { border:1px solid var(--line); border-radius:8px; margin:10px 0; overflow:hidden; }
   .wf-group-hdr { display:flex; gap:10px; padding:5px 10px; background:var(--bg); font-size:11px; color:var(--dim); font-family:ui-monospace,monospace; }
-  .wf-row { display:flex; gap:10px; align-items:center; padding:5px 10px; border-top:1px solid var(--line); cursor:pointer; }
+  .wf-row { display:flex; gap:10px; align-items:center; padding:10px; border-top:1px solid var(--line); cursor:pointer; }
   .wf-row:hover { background:var(--bg); }
   .wf-row.active { background:var(--bg); outline:1px solid var(--accent); }
   /* 左侧元信息用网格列对齐：时间 | 模型（可换行）| 状态/SSE 独立占位 */
@@ -134,16 +142,31 @@
   .wf-badges { display:flex; gap:4px; justify-content:flex-start; }
   /* viewer 式耗时/token 信息：两行右对齐 */
   .wf-row-extra { width:150px; flex-shrink:0; text-align:right; font-size:11px; color:var(--dim); line-height:1.5; }
-  .wf-row-lane { flex:1; position:relative; height:14px; min-width:100px; }
+  .wf-row-lane { flex:1; position:relative; height:14px; min-width:100px; margin-bottom:2px; }
+  .wf-row-main { flex:1; min-width:0; display:flex; flex-direction:column; }
+  /* viewer 式：lane 下方直接展示 timing 与 token 明细 */
+  /* viewer 式小字：9px 等宽，紧凑不重叠 */
+  .wf-timing { color:var(--dim); font-size:9px; line-height:14px; font-family:ui-monospace,monospace; margin-top:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } /* 文字下移半行，与进度条留呼吸空间 */
+  .wf-timing b { color:var(--text); font-weight:700; }
+  .wf-token { color:var(--dim); font-size:9px; line-height:14px; font-family:ui-monospace,monospace; white-space:normal; }
+  .wf-token b { color:var(--text); font-weight:700; }
+  .wf-token .cache-rate { color:var(--accent); }
+  .wf-token .tok-line { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:5px; }
+  .wf-token .tok-nested { padding-left:12px; }
+  /* viewer 式 cache 命中率进度条 */
+  .cache-bar { display:inline-block; width:46px; height:6px; border-radius:3px; background:var(--line); overflow:hidden; vertical-align:middle; }
+  .cache-bar i { display:block; height:100%; }
   .wf-scale { display:flex; justify-content:space-between; font-size:10px; color:var(--dim); font-family:ui-monospace,monospace; padding:2px 10px; }
   /* 底部抽屉 */
-  #klog-drawer { position:fixed; left:0; right:0; bottom:0; height:56vh; z-index:60; background:var(--panel); border-top:1px solid var(--accent); display:flex; flex-direction:column; box-shadow:0 -8px 30px rgba(0,0,0,.4); }
+  /* 右侧详情面板：不遮挡日志列表，左侧列表仍可滚动点击 */
+  #klog-drawer { position:fixed; right:0; top:0; bottom:0; width:52vw; max-width:960px; z-index:60; background:var(--panel); border-left:1px solid var(--accent); display:flex; flex-direction:row; box-shadow:-8px 0 30px rgba(0,0,0,.4); }
   #klog-drawer.hidden { display:none; }
-  #klog-drawer.fullscreen { height:100vh; }
-  #drawer-resize { height:6px; cursor:ns-resize; flex-shrink:0; } /* 拖拽调节抽屉高度 */
+  #klog-drawer.fullscreen { width:100vw; max-width:none; }
+  #drawer-resize { width:6px; cursor:ew-resize; flex-shrink:0; } /* 左边缘拖拽调节宽度 */
   #drawer-resize:hover { background:var(--accent); }
+  .drawer-inner { flex:1; min-width:0; display:flex; flex-direction:column; }
   .drawer-bar { display:flex; align-items:center; gap:8px; padding:6px 12px; border-bottom:1px solid var(--line); }
-  .drawer-body { flex:1; overflow:auto; padding:10px 14px; }
+  .drawer-body { flex:1; overflow:auto; padding:0 14px 10px; } /* 顶部不留 padding，吸顶无缝 */
   .bar-wrap { display:inline-block; background:var(--line); border-radius:3px; height:10px; min-width:2px; }
   .bar { display:block; height:10px; background:var(--accent); border-radius:3px; }
   .klog-layout { display:flex; gap:14px; align-items:flex-start; }
@@ -184,7 +207,7 @@
   </nav>
   <div class="tok">主题
     <div class="seg" id="theme-seg">
-      <button data-v="auto">跟随系统</button><button data-v="dark">深色</button><button data-v="light">浅色</button>
+      <button data-v="dark">深色</button><button data-v="auto">系统</button><button data-v="light">浅色</button>
     </div>
   </div>
 </aside>
@@ -334,6 +357,12 @@
       <label><input type="checkbox" id="klog-live" checked onchange="klogToggleLive()"> 实时监听</label>
       <span class="muted" id="klog-ws">未连接</span>
     </div>
+    <div class="wf-legend">
+      <span><i class="ph-first"></i>First token</span>
+      <span><i class="ph-think"></i>Thinking</span>
+      <span><i class="ph-out"></i>Output</span>
+      <span><i class="ph-tool"></i>Toolcall</span>
+    </div>
     <div class="panel"><div id="klog-rows"></div></div>
   </div>
 </section>
@@ -379,6 +408,12 @@ const api = (path, opt={}) => fetch(path, {...opt, headers:{...H(), ...(opt.body
   return r.json();
 });
 const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// 行内编辑：展开/收起紧随数据行的编辑行
+function toggleRowEdit(id){
+  const el = $(id);
+  el.classList.toggle('hidden');
+  if (!el.classList.contains('hidden')) el.querySelector('input,select')?.focus();
+}
 // 金额自适应精度：0.000034 不再显示成 0.0000
 const fmtCNY = v => v==null||v===0 ? '0' : v>=1 ? v.toFixed(2) : v>=0.01 ? v.toFixed(4) : v>=0.0001 ? v.toFixed(5) : v.toExponential(2);
 // 复制并给按钮短暂反馈
@@ -393,24 +428,6 @@ function cfClose(){ $('cf').classList.remove('open'); cfCb=null; }
 $('cf-ok').onclick = ()=>{ const cb=cfCb; cfClose(); cb&&cb(); };
 // 人性化时长：1240 -> "1.24s"
 const fmtDur = ms => { if(ms==null) return '-'; if(ms<1000) return ms+'ms'; return (ms/1000).toFixed(2)+'s'; };
-// 时间线泳道：以列表窗口 [min(start), max(end)] 为时间轴
-// 条内分段：firstToken(紫,0→首字节) | output(青,首字节→结束)，条位置=真实起始偏移
-let wfWin = {min:0, span:1};
-function wfCalc(calls){
-  if(!calls.length){ wfWin={min:0,span:1}; return; }
-  const min = Math.min(...calls.map(c=>c.started_at));
-  const max = Math.max(...calls.map(c=>c.started_at + Math.max(c.duration_ms||0,1)));
-  wfWin = {min, span: Math.max(max-min, 1)};
-}
-function wfLane(c){
-  const total = Math.max(c.duration_ms||0, 1);
-  const left = (c.started_at - wfWin.min) / wfWin.span * 100;
-  const width = Math.max(total / wfWin.span * 100, 0.6); // 最小可见宽
-  const fb = Math.min(c.first_byte_ms ?? total, total);
-  const seg = (w, cls) => w>0 ? `<i class="${cls}" style="width:${(w/total*100).toFixed(1)}%"></i>` : '';
-  return `<div class="wf-lane" title="firstToken ${fmtDur(fb)} · output ${fmtDur(Math.max(total-fb,0))} · 总 ${fmtDur(total)}（窗口起点 +${fmtDur(c.started_at-wfWin.min)}）">
-    <span class="wf-bar" style="left:${left.toFixed(2)}%;width:${width.toFixed(2)}%">${seg(fb,'ph-first')}${seg(total-fb,'ph-out')}</span></div>`;
-}
 const fmtMS = ms => { const d=new Date(ms); return d.toLocaleTimeString('zh-CN',{hour12:false})+'.'+String(d.getMilliseconds()).padStart(3,'0'); };
 
 // ---------- hash 路由：#/vkeys #/keys #/policies #/settings #/stats[/id] #/logs[/id] ----------
@@ -490,8 +507,16 @@ function provBlock(list, name, note, ml){
     ${ks.length ? `<table><tbody>${ks.map(k=>{
         const masked = k.key.length>8 ? k.key.slice(0,4)+'****'+k.key.slice(-4) : '****';
         return `<tr><td>${masked}</td><td>${esc(k.label)}</td><td>${k.enabled?'启用':'停用'}</td><td>
+          <button class="small" onclick="toggleRowEdit('kedit-${k.id}')">编辑</button>
           <button class="small" onclick="toggleKey(${k.id},${!k.enabled})">${k.enabled?'停用':'启用'}</button>
-          <button class="small" onclick="del('/api/upstream-keys/${k.id}',loadUpKeys)">删除</button></td></tr>`;
+          <button class="small" onclick="del('/api/upstream-keys/${k.id}',loadUpKeys)">删除</button></td></tr>
+          <tr id="kedit-${k.id}" class="hidden edit-row"><td colspan="4">
+            <div class="row" style="margin:4px 0"><label>备注</label><input id="ke-${k.id}-label" value="${esc(k.label)}" placeholder="如 账号A" style="width:200px">
+            <label class="switch" title="启用/停用"><input type="checkbox" id="ke-${k.id}-en" ${k.enabled?'checked':''}><i></i></label>
+            <button class="primary" onclick="saveKeyEdit(${k.id})">保存</button>
+            <button class="small" onclick="toggleRowEdit('kedit-${k.id}')">取消</button>
+            <span class="hint">key 值不可改，更换请删除后重新添加</span></div>
+          </td></tr>`;
       }).join('')}</tbody></table>` : ''}
     <div class="key-add"><input id="nk-${u.id}-key" placeholder="真实 API Key" style="flex:1;min-width:180px">
       <input id="nk-${u.id}-label" placeholder="备注（如 账号A）"><button class="primary" onclick="addKeyTo(${u.id})">添加 Key</button></div>
@@ -685,14 +710,55 @@ async function toggleKey(id,en){
   const cur=keys.find(x=>x.id===id);
   try{ await api(`/api/upstream-keys/${id}`,{method:'PUT',body:JSON.stringify({key:cur.key,label:cur.label,enabled:en})}); await loadUpKeys(); }catch(e){alert(e.message)}
 }
+// 真实 Key 编辑保存：备注 + 启停
+async function saveKeyEdit(id){
+  const cur=keys.find(k=>k.id===id);
+  try{
+    await api(`/api/upstream-keys/${id}`,{method:'PUT',body:JSON.stringify({
+      key:cur.key, label:$('ke-'+id+'-label').value.trim(), enabled:$('ke-'+id+'-en').checked })});
+    await loadUpKeys(); $('kedit-'+id).classList.add('hidden');
+  }catch(e){ alert('保存失败：'+e.message); }
+}
+// 策略编辑保存：名称 + 重新映射真实 Key
+async function savePolicyEdit(id){
+  const name=$('pe-'+id+'-name').value.trim(), keyId=+$('pe-'+id+'-key').value;
+  if(!name || !keyId){ alert('需要名称和真实 Key'); return; }
+  try{
+    await api('/api/policies/'+id,{method:'PUT',body:JSON.stringify({
+      name, type:'fixed', config:JSON.stringify({upstream_key_id:keyId}) })});
+    loadPolicies(); loadVirtualKeys(); $('pedit-'+id).classList.add('hidden');
+  }catch(e){ alert('保存失败：'+e.message); }
+}
+// 虚拟 Key 编辑保存：名称 + 切换绑定策略
+async function saveVkEdit(id,enabled){
+  const list=(await api('/api/virtual-keys'))||[]; const cur=list.find(x=>x.id===id);
+  try{
+    await api('/api/virtual-keys/'+id,{method:'PUT',body:JSON.stringify({
+      key:cur.key, name:$('ve-'+id+'-name').value.trim(),
+      policy_id:+$('ve-'+id+'-policy').value, enabled })});
+    loadVirtualKeys(); $('vedit-'+id).classList.add('hidden');
+  }catch(e){ alert('保存失败：'+e.message); }
+}
 
 // ---------- 策略 ----------
 async function loadPolicies(){
   const list = (await api('/api/policies')) || [];
   $('pol-body').innerHTML = list.map(p=>{
-    let target='-';
-    try{ const c=JSON.parse(p.config); const k=keys.find(x=>x.id===c.upstream_key_id); if(k) target=`#${k.id} ${k.upstream} ${k.label||''}`; }catch{}
-    return `<tr><td>${p.id}</td><td>${esc(p.name)}</td><td>${p.type}</td><td>${esc(target)}</td><td><button class="small" onclick="del('/api/policies/${p.id}',loadPolicies)">删除</button></td></tr>`;
+    let target='-', curKey=null;
+    try{ const c=JSON.parse(p.config); const k=keys.find(x=>x.id===c.upstream_key_id); if(k){ target=`#${k.id} ${k.upstream} ${k.label||''}`; curKey=k.id; } }catch{}
+    const keyOpts = keys.map(k=>{
+      const u = ups.find(x=>x.name===k.upstream);
+      return `<option value="${k.id}" ${k.id===curKey?'selected':''}>#${k.id} ${esc(u?.note||k.upstream)} · ${esc(k.label||'无备注')}</option>`;
+    }).join('') || '<option value="">（先添加真实 Key）</option>';
+    return `<tr><td>${p.id}</td><td>${esc(p.name)}</td><td>${p.type}</td><td>${esc(target)}</td><td>
+      <button class="small" onclick="toggleRowEdit('pedit-${p.id}')">编辑</button>
+      <button class="danger" onclick="del('/api/policies/${p.id}',loadPolicies)">删除</button></td></tr>
+      <tr id="pedit-${p.id}" class="hidden edit-row"><td colspan="5">
+        <div class="row" style="margin:4px 0"><label>名称</label><input id="pe-${p.id}-name" value="${esc(p.name)}" style="width:260px">
+        <label>映射真实 Key</label><select id="pe-${p.id}-key">${keyOpts}</select>
+        <button class="primary" onclick="savePolicyEdit(${p.id})">保存</button>
+        <button class="small" onclick="toggleRowEdit('pedit-${p.id}')">取消</button></div>
+      </td></tr>`;
   }).join('') || '<tr><td colspan=5 class=muted>暂无</td></tr>';
   $('pol-key').innerHTML = keys.map(k=>{
     const u = ups.find(x=>x.name===k.upstream);
@@ -733,16 +799,27 @@ async function loadVirtualKeys(){
   }
   $('vk-body').innerHTML = list.map(v=>{
     const p = pols.find(x=>x.id===v.policy_id);
+    // 编辑行紧跟数据行：修改名称与绑定策略（key 值已发放不修改）
+    const polOpts = pols.map(pp=>`<option value="${pp.id}" ${pp.id===v.policy_id?'selected':''}>${esc(pp.name)}</option>`).join('')
+      || '<option value="">（先创建策略）</option>';
     return `<tr><td>${v.id}</td><td><code>${esc(v.key)}</code></td><td>${esc(v.name)}</td>
       <td>${p?esc(p.name):'-'}</td>
       <td>${today[v.id]??0}</td>
       <td><label class="switch" title="${v.enabled?'点击停用':'点击启用'}"><input type="checkbox" ${v.enabled?'checked':''} onchange="toggleVk(${v.id},${!v.enabled})"><i></i></label></td><td>
       <button class="small" onclick="copyText('${esc(v.key)}',this)">复制</button>
+      <button class="small" onclick="toggleRowEdit('vedit-${v.id}')">编辑</button>
       <button class="small" onclick="go('#/stats/${v.id}')">统计</button>
       <button class="small" onclick="go('#/logs/${v.id}')">日志</button>
       <span style="display:inline-block;width:18px"></span>
-      <button class="danger" onclick="del('/api/virtual-keys/${v.id}',loadVirtualKeys,'删除后使用该 Key 的客户端将立即失效')">删除</button></td></tr>`;
-  }).join('') || '<tr><td colspan=6 class=muted>暂无</td></tr>';
+      <button class="danger" onclick="del('/api/virtual-keys/${v.id}',loadVirtualKeys,'删除后使用该 Key 的客户端将立即失效')">删除</button></td></tr>
+      <tr id="vedit-${v.id}" class="hidden edit-row"><td colspan="7">
+      <div class="row" style="margin:4px 0"><label>名称</label><input id="ve-${v.id}-name" value="${esc(v.name)}" style="width:200px">
+      <label>调用策略</label><select id="ve-${v.id}-policy">${polOpts}</select>
+      <button class="primary" onclick="saveVkEdit(${v.id},${v.enabled})">保存</button>
+      <button class="small" onclick="toggleRowEdit('vedit-${v.id}')">取消</button>
+      <span class="hint">key 值不修改；需换值请新建虚拟 Key</span></div>
+    </td></tr>`;
+  }).join('');
 }
 async function addVirtualKey(){
   if (!$('vk-policy').value){ alert('先创建策略'); return; }
@@ -836,9 +913,12 @@ let klogWS = null, klogCalls = [], klogLiveItems = new Set(), lgLive = 0;
 let klogLimit = 20;
 const KLOG_PAGE = 20, KLOG_MAX = 100;
 // 分段间隔分段滑块
-let klogGap = 300;
+// 分段间隔记住上次选择（localStorage）
+let klogGap = +(localStorage.getItem('mg-klog-gap') || 300);
+document.querySelectorAll('#klog-gap button').forEach(x=>x.classList.toggle('on', +x.dataset.v===klogGap));
 document.querySelectorAll('#klog-gap button').forEach(b => b.onclick = () => {
   klogGap = +b.dataset.v;
+  localStorage.setItem('mg-klog-gap', b.dataset.v);
   document.querySelectorAll('#klog-gap button').forEach(x=>x.classList.toggle('on', x===b));
   klogRender();
 });
@@ -876,7 +956,7 @@ async function klogLoad(){
 function klogMore(){ klogLimit = Math.min(klogLimit + KLOG_PAGE, KLOG_MAX); klogRender(); }
 // 渲染：按间隔分段；全局以最大分段跨度为 100%，其他分段等比例缩放
 function klogRender(){
-  const shown = klogCalls.slice(0, klogLimit).slice().sort((a,b)=>a.started_at-b.started_at); // 时间正序
+  const shown = klogCalls.slice(0, klogLimit).slice().sort((a,b)=>b.started_at-a.started_at); // 时间倒序：最新在前，实时对话置顶
   const gapMS = klogGap * 1000;
   // 分段：相邻调用间隔 > gapMS 则切开
   const groups = [];
@@ -889,8 +969,9 @@ function klogRender(){
     cur.push(c);
   }
   if (cur.length) groups.push(cur);
-  // 时间正序展示（旧→新），全局比例基准 = 最大分段跨度
-  const spans = groups.map(g => g[g.length-1].started_at + Math.max(g[g.length-1].duration_ms||0,1) - g[0].started_at);
+  // 列表按时间倒序，但分段起止与跨度按真实时间 min/max 计算，全局比例基准 = 最大分段跨度
+  const gSpan = g => Math.max(...g.map(x=>x.started_at+Math.max(x.duration_ms||0,1))) - Math.min(...g.map(x=>x.started_at));
+  const spans = groups.map(gSpan);
   const globalMax = Math.max(...spans, 1);
   const liveArr = [...klogLiveItems];
   const liveRow = liveArr.map(k=>{
@@ -898,45 +979,126 @@ function klogRender(){
     return '<div class="wf-row" style="cursor:default"><div class="wf-row-meta"><span class="live-dot"></span><b>'+esc(parts[0]||'…')+'</b><span class="wf-badges"><span class="badge err">正在对话</span></span></div><div class="wf-row-lane"></div><div class="wf-row-extra"><div>进行中…</div></div></div>';
   }).join('');
   const html = groups.map((g, gi)=>{
-    const gStart = g[0].started_at, gEnd = g[g.length-1].started_at + Math.max(g[g.length-1].duration_ms||0,1);
+    const gStart = Math.min(...g.map(x=>x.started_at));
+    const gEnd = gStart + gSpan(g);
     const scale = spans[gi] / globalMax;   // 该分段相对全局的宽度占比
+    // 相邻请求间隔：本请求 start − 上一请求 end（负数=重叠），viewer 的「间隔时间」口径
+    const asc = g.slice().sort((a,b)=>a.started_at-b.started_at);
+    const gapOf = {}; let prevEnd = null;
+    asc.forEach(x=>{ if (prevEnd!=null) gapOf[x.id] = x.started_at - prevEnd; prevEnd = x.started_at + Math.max(x.duration_ms||0,1); });
     const rows = g.map(c=>{
       const total = Math.max(c.duration_ms||0,1);
       const left = (c.started_at - gStart) / globalMax * 100;
       const width = Math.max(total / globalMax * 100, 0.4);
       const fb = Math.min(c.first_byte_ms ?? total, total);
       const seg = (w, cls) => w>0 ? '<i class="'+cls+'" style="width:'+(w/total*100).toFixed(1)+'%"></i>' : '';
-      return '<div class="wf-row" onclick="klogDetail('+c.id+')">'+
+      return '<div class="wf-row" data-gstart="'+gStart+'" data-gap="'+(gapOf[c.id]??'')+'" onclick="klogDetail('+c.id+')">'+
         '<div class="wf-row-meta"><span>'+fmtMS(c.started_at)+'</span><b>'+esc(c.model||'(未知)')+'</b>'+
         '<span class="wf-badges"><span class="badge '+(c.error||((c.status_code??500)>=400)?'err':'ok')+'">'+(c.status_code??'…')+'</span>'+
         (c.stream?'<span class="badge">SSE</span>':'')+'</span></div>'+
-        '<div class="wf-row-lane" title="firstToken '+fmtDur(fb)+' · output '+fmtDur(Math.max(total-fb,0))+' · 总 '+fmtDur(total)+'">'+
+        '<div class="wf-row-main">'+
+        '<div class="wf-row-lane" id="lane-'+c.id+'">'+
         '<span class="wf-bar" style="left:'+left.toFixed(2)+'%;width:'+width.toFixed(2)+'%">'+seg(fb,'ph-first')+seg(total-fb,'ph-out')+'</span></div>'+
-        '<div class="wf-row-extra"><div>总 '+fmtDur(total)+(c.first_byte_ms!=null?' · 首字 '+fmtDur(fb):'')+'</div><div>'+(c.total_tokens??'-')+' tk</div></div></div>';
+        '<div class="wf-timing" id="timing-'+c.id+'">'+(gapOf[c.id]!=null?'<b>Gap</b> '+fmtDur(gapOf[c.id])+' · ':'')+'<b>Start</b> +'+fmtDur(c.started_at-gStart)+' · <b>First token</b> '+fmtDur(c.first_byte_ms)+' · <b>Total</b> '+fmtDur(total)+'</div>'+
+        '<div class="wf-token" id="token-'+c.id+'">'+wfTokenHTML(c)+'</div></div></div>';
     }).join('');
-    return '<div class="wf-group"><div class="wf-group-hdr"><span>'+fmtMS(gStart)+' → '+fmtMS(gEnd)+'</span><span>'+g.length+' 次调用</span><span>跨度 '+fmtDur(gEnd-gStart)+(scale<1?'（比例 '+(scale*100).toFixed(0)+'%）':'')+'</span></div>'+rows+
-      '<div class="wf-scale"><span>'+fmtMS(gStart)+'</span><span>0%</span><span>'+((spans[gi]/globalMax)*100).toFixed(0)+'%（全局 '+fmtDur(globalMax)+'）</span></div></div>';
+    return '<div class="wf-group"><div class="wf-group-hdr"><span>'+fmtMS(gStart)+' → '+fmtMS(gEnd)+'</span><span>'+g.length+' 次调用</span></div>'+rows+
+      '<div class="wf-scale"><span>'+fmtMS(gStart)+'</span><span></span><span>'+fmtMS(gEnd)+'</span></div></div>';
   }).join('');
   $('klog-rows').innerHTML = liveRow + html + '<div class="row"><button class="small" id="klog-more" onclick="klogMore()">加载更多</button><span class="hint" id="klog-pageinfo">显示 '+shown.length+'/'+klogCalls.length+' 条</span></div>';
   const more=$('klog-more'); if(more) more.style.display = klogLimit < klogCalls.length ? '' : 'none';
+  klogUpgradePhases(shown);
+}
+// viewer 式 token 行：prompt/completion/total + 缓存命中率
+const fmtTok = n => n==null ? '-' : Number(n).toLocaleString('en-US');
+function wfTokenHTML(c){
+  if (c.total_tokens==null && c.prompt_tokens==null && c.completion_tokens==null) return '';
+  let html = '<div class="tok-line"><b>Token</b><span>prompt_tokens <b>'+fmtTok(c.prompt_tokens)+'</b></span><span>completion_tokens <b>'+fmtTok(c.completion_tokens)+'</b></span><span>total_tokens <b>'+fmtTok(c.total_tokens)+'</b></span>';
+  const cached = c.prompt_cached_tokens;
+  if (cached>0 && c.prompt_tokens>0){
+    const rate = Math.min(cached/c.prompt_tokens,1);
+    // viewer 同款：mini 进度条 + 百分比，颜色随命中率变化
+    const pct=(rate*100).toFixed(2), color = rate>=.8?'#4ec9b0':rate>=.5?'#569cd6':rate>=.2?'#dcdcaa':'#ce9178';
+    html += '<span class="cache-rate" title="缓存命中 '+fmtTok(cached)+' / '+fmtTok(c.prompt_tokens)+'">Cache <span class="cache-bar"><i style="width:'+pct+'%;background:'+color+'"></i></span> '+pct+'%</span>';
+  }
+  html += '</div>';
+  if (cached>0 && c.prompt_tokens>0){
+    html += '<div class="tok-line tok-nested">↳<span>prompt_tokens_details.cached_tokens <b>'+fmtTok(cached)+'</b></span></div>';
+  }
+  return html;
+}
+// ---------- 阶段耗时：等待首包 / 思考 / 文本输出 / 工具调用 ----------
+// 按 SSE 分包内容分类 chunk，页面直接展示各阶段时长（不放 title）
+function klogChunkType(data){
+  let kind = 'none';
+  // 分包 data 可能带 "data: " 前缀（原始 SSE 行）也可能是纯 JSON，两种都兼容
+  const lines = (data||'').split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trim());
+  if (!lines.length) lines.push((data||'').trim());
+  for (const s of lines){
+    let j; try{ j = JSON.parse(s); }catch{ continue; }
+    const t = j.type || '';
+    const delta = (j.choices && j.choices[0] && j.choices[0].delta) || {};
+    // 事件名宽松匹配：reasoning* 一律思考；*function_call*/tool* 一律工具；output_text*/content 一律输出
+    if (delta.reasoning_content != null || delta.reasoning != null || j.thinking ||
+        t.includes('reasoning')) kind = 'think';
+    else if (delta.tool_calls || j.tool_use || j.input_json_delta || j.tool_calls ||
+             t.includes('function_call') || t.includes('tool_call')) kind = 'tool';
+    else if (delta.content != null || j.text || t.includes('output_text') || t==='content_block_delta') kind = 'out';
+  }
+  return kind;
+}
+// 对流式行拉取分包并升级条形图与文字为四阶段
+async function klogUpgradePhases(shown){
+  for (const c of shown){
+    if (!c.stream || !c.chunk_count) continue;
+    let chunks; try{ chunks = (await api('/api/calls/'+c.id+'/chunks')) || []; }catch{ continue; }
+    const marks = chunks.map(ch=>({t:ch.t_offset_ms, kind:klogChunkType(ch.data)})).filter(m=>m.kind!=='none');
+    if (!marks.length) continue;
+    const total = Math.max(c.duration_ms||0,1);
+    const first = marks[0].t;
+    // viewer 语义：阶段时长 = 该阶段从出现到下一阶段开始的区间（单包也有时长）
+    const phase = {think:0, out:0, tool:0};
+    for (let i=0;i<marks.length;i++){
+      const end = i+1<marks.length ? marks[i+1].t : Math.max(c.duration_ms||0, marks[i].t);
+      phase[marks[i].kind] += Math.max(end-marks[i].t, 0);
+    }
+    const think = phase.think, out = phase.out, tool = phase.tool;
+    const seg = (w,cls) => w>0 ? '<i class="'+cls+'" style="width:'+Math.max(w/total*100,1)+'%"></i>' : '';
+    const lane = $('lane-'+c.id), timing = $('timing-'+c.id);
+    if (lane) lane.querySelector('.wf-bar').innerHTML = seg(first,'ph-first')+seg(think,'ph-think')+seg(out,'ph-out')+seg(tool,'ph-tool');
+    if (timing){
+      // 与 viewer 一致：Start +x · First token · Thinking · Output · Toolcall · Total
+      const row = lane.closest('.wf-row');
+      const gStart = +(row.dataset.gstart||0);
+      const gapRaw = row.dataset.gap;
+      const parts = [(gapRaw!==''&&gapRaw!=null?'<b>Gap</b> '+fmtDur(+gapRaw):null),
+        '<b>Start</b> +'+fmtDur(c.started_at-gStart),
+        '<b>First token</b> '+fmtDur(first),
+        '<b>Thinking</b> '+(think?fmtDur(think):'-'),
+        '<b>Output</b> '+(out?fmtDur(out):'-'),
+        '<b>Toolcall</b> '+(tool?fmtDur(tool):'-'),
+        '<b>Total</b> '+fmtDur(total)];
+      timing.innerHTML = parts.filter(Boolean).join(' · ');
+    }
+  }
 }
 function openDrawer(){ $('klog-drawer').classList.remove('hidden'); }
 function closeDrawer(){ $('klog-drawer').classList.add('hidden'); $('klog-drawer').classList.remove('fullscreen'); }
 function toggleKlogFS(){ $('klog-drawer').classList.toggle('fullscreen'); }
-// 抽屉高度拖拽：顶边条上下拖动，20vh~92vh（元素在 script 之后，需等 DOM 就绪）
+// 抽屉宽度拖拽：左边缘条左右拖动，24vw~92vw（元素在 script 之后，需等 DOM 就绪）
 document.addEventListener('DOMContentLoaded', ()=>{
   const h = $('drawer-resize'), d = $('klog-drawer');
   let dragging = false;
   h.addEventListener('mousedown', e=>{ dragging=true; d.classList.remove('fullscreen'); e.preventDefault(); });
   window.addEventListener('mousemove', e=>{ if(!dragging) return;
-    const vh = window.innerHeight, pct = Math.min(Math.max((vh-e.clientY)/vh, .2), .92);
-    d.style.height = (pct*100).toFixed(1)+'vh'; });
+    const vw = window.innerWidth, pct = Math.min(Math.max((vw-e.clientX)/vw, .24), .92);
+    d.style.width = (pct*100).toFixed(1)+'vw'; d.style.maxWidth='none'; });
   window.addEventListener('mouseup', ()=>dragging=false);
 });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeDrawer(); });
 
 // 折叠分区展开状态（会话间保持）
-const secOpen = new Set(['请求体 · Messages', '响应体 · 合并文本']);
+const secOpen = new Set(['请求体 · Messages', '响应体 · Content']);
 function sec(title, count, bodyHtml){
   const isOpen = secOpen.has(title);
   return `<div class="sec"><div class="sec-hdr" onclick="toggleSec(this,'${title.replace(/'/g,"")}')">
@@ -952,7 +1114,12 @@ function toggleSec(el, title){
 // 单条消息渲染：role 标签 + 摘要 + 可展开
 function msgHTML(m){
   const role = m.role||'other';
-  const txt = typeof m.content==='string' ? m.content : JSON.stringify(m.content??'');
+  // content 多协议形态：字符串 / openai 数组 [{type:'text',text}] / responses 数组 [{type:'input_text',text}] / null(纯 tool_calls)
+  let txt = '';
+  if (typeof m.content === 'string') txt = m.content;
+  else if (Array.isArray(m.content)) txt = m.content.map(p=>p.text ?? p.summary ?? JSON.stringify(p)).join('\n');
+  else if (m.content != null) txt = JSON.stringify(m.content);
+  if (m.tool_calls) txt += (txt?'\n':'') + m.tool_calls.map(tc=>'tool_call: '+((tc.function||{}).name||'?')+' '+((tc.function||{}).arguments||'')).join('\n');
   const preview = txt.replace(/\s+/g,' ').slice(0,90);
   let body = '<pre>'+esc(txt)+'</pre>'; // 不限高度直接平铺
   if (m.tool_calls) body += m.tool_calls.map(tc=>'<div class="hint">tool_call: '+esc((tc.function||{}).name||'?')+' '+esc((tc.function||{}).arguments||'')+'</div>').join('');
@@ -979,21 +1146,92 @@ async function klogDetail(id){
   let bar=''; chunks.forEach((ch,i)=>{ bar+='<span title="#'+ch.seq+' +'+gaps[i]+'ms" style="height:'+Math.max(gaps[i]/maxGap*60,3)+'px"></span>'; });
   const pre = s=>{ try{ return JSON.stringify(JSON.parse(s),null,2) }catch{ return s||'（空）' } };
   let body={}; try{ body=JSON.parse(c.req_body||'{}'); }catch{}
-  const messages = body.messages||[];
-  let merged='';
-  if (chunks.length){ chunks.forEach(ch=>{ try{ const d=JSON.parse(ch.data); merged+=(d.choices?.[0]?.delta?.content||''); }catch{} }); }
-  else { try{ merged=JSON.parse(c.resp_body||'{}').choices?.[0]?.message?.content||''; }catch{} }
-  const sseRows = chunks.map((ch,i)=>'<div class="chunk-row" style="flex-wrap:wrap"><span class="chunk-meta">#'+ch.seq+' T+'+ch.t_offset_ms+'ms Δ'+gaps[i]+'ms</span><code class="sse-data">'+esc(ch.data.slice(0,240))+'</code></div>').join('');
+  // messages 兼容两种协议：chat-completions 的 messages / Responses API 的 input（typed items）
+  let messages = body.messages||[];
+  // 截断抢救：body 超归档上限被截断时 JSON.parse 失败，但 messages/input 在 body 前部，
+  // 按括号配对逐项解析前缀即可还原（尾部残缺项丢弃）
+  if (!Object.keys(body).length && c.req_body){
+    for (const key of ['messages','input']){
+      const idx = c.req_body.indexOf('"'+key+'":[');
+      if (idx<0) continue;
+      // 字符串感知扫描：跳过字符串字面量内部的 { } "，否则内容含代码时配对会错乱
+      let i = idx+key.length+3, depth=0, start=-1, inStr=false, esc=false;
+      const items=[];
+      for (; i<c.req_body.length && i<idx+key.length+3+4*1024*1024; i++){
+        const ch=c.req_body[i];
+        if (inStr){ if (esc) esc=false; else if (ch==='\\') esc=true; else if (ch==='"') inStr=false; continue; }
+        if (ch==='"'){ inStr=true; continue; }
+        if (ch==='{'){ if(depth===0) start=i; depth++; }
+        else if (ch==='}' && depth>0){ depth--;
+          if (depth===0 && start>=0){ try{ items.push(JSON.parse(c.req_body.slice(start,i+1))); }catch{} start=-1; } }
+        else if (ch===']' && depth===0) break;
+      }
+      if (items.length){ messages = items.filter(x=>x&&(x.type==='message'||x.role)).map(x=>({role:x.role||'user',content:x.content||x.text})); break; }
+    }
+  }
+  if (!messages.length && Array.isArray(body.input)){
+    messages = body.input.filter(x=>x && (x.type==='message'||x.role)).map(x=>({role:x.role||'user', content:x.content||x.text}));
+  }
+  if (body.instructions) messages = [{role:'instructions', content:body.instructions}, ...messages];
+  if (!messages.length && c.req_body){
+    // instructions 也在 body 前部，截断时单独抢救
+    const m = c.req_body.match(/"instructions"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (m){ try{ messages = [{role:'instructions', content:JSON.parse('"'+m[1]+'"')}]; }catch{} }
+  }
+  // viewer 分类：文本 / 思考 / 工具调用 分开合并
+  const merged = {content:'', reasoning:'', tools:[]};
+  const mergeChunk = d=>{
+    // chat-completions：delta.content / reasoning_content / tool_calls 参数
+    const delta = d.choices?.[0]?.delta;
+    if (delta?.content) merged.content += delta.content;
+    if (delta?.reasoning_content) merged.reasoning += delta.reasoning_content;
+    (delta?.tool_calls||[]).forEach(tc=>{ if(tc.function?.arguments) merged.tools.push(tc.function.name+': '+tc.function.arguments); });
+    // Responses API：output_text.delta / response.completed 汇总
+    if (d.type==='output_text.delta' && d.delta) merged.content += d.delta;
+    if (String(d.type||'').includes('reasoning') && d.delta) merged.reasoning += d.delta;
+    if (d.type==='response.output_item.done' && d.item?.type==='function_call'){
+      merged.tools.push((d.item.name||'?')+': '+(d.item.arguments||''));
+    }
+    // custom tool call：参数以 input 字符串流式下发
+    // added 时建条目（input 为空），done 时用完整 input 覆盖同名列目，避免重复
+    if (d.type==='response.output_item.added' && d.item?.type==='custom_tool_call'){
+      merged.tools.push((d.item.name||'?')+': ');
+    }
+    if (d.type==='response.output_item.done' && d.item?.type==='custom_tool_call'){
+      const entry=(d.item.name||'?')+': '+(d.item.input||'');
+      const i=merged.tools.findIndex(t=>t.startsWith((d.item.name||'?')+':'));
+      if (i>=0) merged.tools[i]=entry; else merged.tools.push(entry);
+    }
+    if (String(d.type||'').includes('custom_tool_call_input.delta') && d.delta && merged.tools.length){
+      merged.tools[merged.tools.length-1] += d.delta;
+    }
+    if (d.type==='response.completed' && d.response?.output){
+      d.response.output.forEach(o=>{
+        if(o.type==='function_call') merged.tools.push((o.name||'?')+': '+(o.arguments||''));
+        (o.content||[]).forEach(p=>{ if(p.text) merged.content += p.text; });
+      });
+    }
+  };
+  if (chunks.length){ chunks.forEach(ch=>{ try{ mergeChunk(JSON.parse(ch.data)); }catch{} }); }
+  else {
+    try{ const d=JSON.parse(c.resp_body||'{}'); mergeChunk(d);
+      merged.content = merged.content || d.choices?.[0]?.message?.content || '';
+      (d.choices?.[0]?.message?.tool_calls||[]).forEach(tc=>merged.tools.push(tc.function.name+': '+tc.function.arguments)); }catch{}
+  }
+  const sseRows = chunks.map((ch,i)=>'<div class="chunk-row" style="flex-wrap:wrap"><span class="chunk-meta">#'+ch.seq+' T+'+ch.t_offset_ms+'ms Δ'+gaps[i]+'ms</span><code class="sse-data">'+esc(ch.data)+'</code></div>').join('');
   $('klog-detail').innerHTML =
     '<div class="row"><b>#'+c.id+' '+esc(c.model)+'</b>'+
     '<span class="badge '+(c.error||((c.status_code??500)>=400)?'err':'ok')+'">'+(c.status_code??'失败')+(c.error?' '+esc(c.error):'')+'</span>'+
     (c.cost_cny!=null?'<span class="badge">￥'+Number(c.cost_cny).toFixed(6)+'</span>':'')+'</div>'+
-    '<div class="hint">'+fmtMS(c.started_at)+' ~ '+(c.ended_at?fmtMS(c.ended_at):'-')+' · 总'+fmtDur(c.duration_ms)+' · 发上游'+fmtDur(c.upstream_ms)+' · 首字节'+fmtDur(c.first_byte_ms)+' · '+(c.total_tokens??'-')+' tokens'+(c.cost_cny==null&&c.cost_points==null?' · 未计价':'')+'</div>'+
+    '<div class="hint">'+fmtMS(c.started_at)+' ~ '+(c.ended_at?fmtMS(c.ended_at):'-')+' · total '+fmtDur(c.duration_ms)+' · upstream '+fmtDur(c.upstream_ms)+' · first_token '+fmtDur(c.first_byte_ms)+' · '+(c.total_tokens??'-')+' tokens'+(c.cost_cny==null&&c.cost_points==null?' · 未计价':'')+'</div>'+
+    '<div class="row" style="margin:2px 0"><span class="hint">转发 →</span><code style="white-space:normal;word-break:break-all">'+esc(c.upstream_url||(c.upstream?c.upstream:'(未记录)'))+'</code></div>'+
     sec('请求 Headers', 1, headersHTML(c.req_headers))+
     sec('请求体 · Messages', messages.length, messages.map(msgHTML).join('') || '<span class="hint">无 messages</span>')+
     sec('请求体 · 原始 JSON', 1, '<pre>'+esc(pre(c.req_body))+'</pre>')+
     sec('响应 Headers', 1, headersHTML(c.resp_headers))+
-    sec('响应体 · 合并文本', 1, '<pre>'+esc(merged||'（空）')+'</pre>')+
+    sec('响应体 · Content', 1, '<pre>'+esc(merged.content||'（空）')+'</pre>')+
+    sec('响应体 · Reasoning', 1, '<pre>'+esc(merged.reasoning||'（空）')+'</pre>')+
+    sec('响应体 · Tool Calls', merged.tools.length, merged.tools.map(t=>'<div class="row"><code style="white-space:pre-wrap;word-break:break-all">'+esc(t)+'</code></div>').join('') || '<span class="hint">无</span>')+
     sec('响应体 · 原始', 1, '<pre>'+esc(pre(c.resp_body))+'</pre>')+
     sec('SSE 分包 ('+chunks.length+')', chunks.length, '<div class="chunk-bar" style="margin-bottom:8px">'+(bar||'<span class="hint">非流式</span>')+'</div>'+sseRows);
   $('drawer-title').textContent = '#'+c.id+' '+c.model+' · '+(c.status_code??'失败');
@@ -1038,14 +1276,16 @@ async function loadVkeyFilter(){
 </script>
 <!-- 详情抽屉：点击横排行滑出 -->
 <div id="klog-drawer" class="hidden">
-  <div id="drawer-resize" title="拖拽调节高度"></div>
-  <div class="drawer-bar">
-    <span id="drawer-title" class="hint"></span>
-    <span style="flex:1"></span>
-    <button class="small" onclick="toggleKlogFS()" title="全屏">⛶</button>
-    <button class="small" onclick="closeDrawer()" title="关闭">×</button>
+  <div id="drawer-resize" title="左右拖拽调节宽度"></div>
+  <div class="drawer-inner">
+    <div class="drawer-bar">
+      <button class="small" onclick="closeDrawer()" title="关闭">×</button>
+      <span id="drawer-title" class="hint"></span>
+      <span style="flex:1"></span>
+      <button class="small" onclick="toggleKlogFS()" title="全屏">⛶</button>
   </div>
-  <div id="klog-detail" class="drawer-body"><span class="hint">点击上方请求行查看详情</span></div>
+    <div id="klog-detail" class="drawer-body"><span class="hint">点击左侧请求行查看详情</span></div>
+  </div>
 </div>
 </body>
 </html>
