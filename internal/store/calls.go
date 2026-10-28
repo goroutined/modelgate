@@ -261,7 +261,13 @@ func (s *Store) UpstreamKeyWithUpstream(keyID int64, protocol string) (key strin
 
 // BumpCallStats 归档后增量统计一次调用。
 func (s *Store) BumpCallStats(vkeyID int64, model string, at int64, ok bool, stream bool, prompt, completion int64, costCNY, costPoints *float64) {
+	s.BumpUKStats(vkeyID, 0, model, at, ok, stream, prompt, completion, 0, costCNY, costPoints)
+}
+
+// BumpUKStats 真实 Key 维度统计（upstreamKeyID>0 时写 stats_*_uk）；转发归档处传入真实 key。
+func (s *Store) BumpUKStats(vkeyID, upstreamKeyID int64, model string, at int64, ok bool, stream bool, prompt, completion, cached int64, costCNY, costPoints *float64) {
 	r := StatRow{Calls: 1, PromptTokens: prompt, CompletionTokens: completion}
+	r.PromptCached = cached
 	if ok {
 		r.OK = 1
 	} else {
@@ -280,4 +286,7 @@ func (s *Store) BumpCallStats(vkeyID int64, model string, at int64, ok bool, str
 		r.UnpricedCalls = 1
 	}
 	s.bumpStats(vkeyID, model, time.UnixMilli(at), r)
+	if upstreamKeyID > 0 {
+		s.bumpUKStats(upstreamKeyID, vkeyID, time.UnixMilli(at), r)
+	}
 }

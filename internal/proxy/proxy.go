@@ -370,8 +370,8 @@ func (c *callRecorder) finish(status int) {
 	}
 	// 增量统计（与归档独立，失败不影响调用）
 	ok := status >= 200 && status < 400
-	c.store.BumpCallStats(c.vk.ID, c.model, c.startMS, ok, c.stream,
-		c.usage.Prompt, c.usage.Completion, costCNY, costPoints)
+	c.store.BumpUKStats(c.vk.ID, c.keyID, c.model, c.startMS, ok, c.stream,
+		c.usage.Prompt, c.usage.Completion, c.usage.CachedInput, costCNY, costPoints)
 	c.callID = id
 	if len(c.chunks) > 0 {
 		if err := c.store.InsertChunks(id, c.chunks); err != nil {

@@ -11,7 +11,8 @@
   /* auto：默认按系统亮色时应用 light 变量（JS 会在 auto 下显式设置） */
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font:14px/1.6 ui-sans-serif,system-ui,"PingFang SC",sans-serif; display:flex; min-height:100vh; }
-  aside { width:200px; background:var(--side); border-right:1px solid var(--line); padding:16px 10px 8px; flex-shrink:0; display:flex; flex-direction:column; }
+  /* 侧栏固定视口高度并吸顶：不被主内容撑高，主题/令牌始终可见，自身内容可滚 */
+  aside { width:200px; background:var(--side); border-right:1px solid var(--line); padding:16px 10px 8px; flex-shrink:0; display:flex; flex-direction:column; position:sticky; top:0; height:100vh; overflow-y:auto; }
   /* 侧边栏可收起：收起后隐藏，左上角浮动按钮展开 */
   body.side-off aside { display:none; }
   #side-toggle { display:none; position:fixed; top:10px; left:10px; z-index:70; background:var(--panel); border:1px solid var(--line); color:var(--text); border-radius:6px; padding:4px 10px; cursor:pointer; font-size:15px; }
@@ -109,13 +110,20 @@
   .sec-hdr .cnt { color:var(--dim); font-weight:normal; }
   .sec-body { padding:4px 8px; }
   /* 消息 */
-  .msg { background:var(--bg); border-left:3px solid #555; border-radius:4px; margin:4px 0; }
+  .msg { background:var(--bg); border-left:3px solid var(--dim); border-radius:4px; margin:4px 0; }
   .msg.role-user { border-left-color:#4caf7d; } .msg.role-assistant { border-left-color:#4f8cff; }
   .msg.role-system { border-left-color:#e0a83c; } .msg.role-tool { border-left-color:#a78bfa; }
   .msg-hdr { display:flex; align-items:center; gap:8px; padding:5px 8px; cursor:pointer; }
-  .role { font-size:11px; padding:1px 8px; border-radius:3px; font-family:ui-monospace,monospace; }
+  .role { font-size:11px; padding:1px 8px; border-radius:3px; font-family:ui-monospace,monospace; background:var(--line); }
+  .role-instructions, .role-developer { background:#3d3a1d; color:#e8e0a8; }
+  :root[data-theme="light"] .role-instructions, :root[data-theme="light"] .role-developer { background:#f6eecb; color:#8a6d14; }
+  /* role 标签适配双主题：深色系原值，浅色主题覆盖为浅底深字 */
   .role-user { background:#1d3a2a; color:#8fe0b0; } .role-assistant { background:#1d2c4a; color:#a8c8ff; }
   .role-system { background:#3d3a1d; color:#e8e0a8; } .role-tool { background:#3a2a3d; color:#e0b8e8; }
+  :root[data-theme="light"] .role-user { background:#e2f3e9; color:#1c7a45; }
+  :root[data-theme="light"] .role-assistant { background:#e3ecfb; color:#2358c4; }
+  :root[data-theme="light"] .role-system { background:#f6eecb; color:#8a6d14; }
+  :root[data-theme="light"] .role-tool { background:#f0e4f4; color:#7b4a8a; }
   .msg-preview { color:var(--dim); font-size:11px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .msg-body { padding:2px 8px 6px; }
   /* SSE 行 */
@@ -153,6 +161,14 @@
   .wf-token .cache-rate { color:var(--accent); }
   .wf-token .tok-line { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:5px; }
   .wf-token .tok-nested { padding-left:12px; }
+  /* 小时柱状图：本期(accent) vs 上周同期(line)，双条并列 */
+  .st-chart { display:flex; align-items:flex-end; gap:2px; padding:4px 0 0; overflow-x:auto; border-bottom:1px solid var(--line); }
+  .st-chart .col { display:flex; flex-direction:column; align-items:center; flex:1; min-width:16px; }
+  .st-chart i { width:5px; min-height:1px; border-radius:1px 1px 0 0; }
+  .st-chart .cur { background:var(--accent); }
+  .st-chart .prev { background:var(--dim); opacity:.55; }
+  .st-chart .bars { display:flex; align-items:flex-end; gap:1px; }
+  .st-chart .x { font-size:9px; color:var(--dim); height:12px; line-height:12px; font-family:ui-monospace,monospace; }
   /* viewer 式 cache 命中率进度条 */
   .cache-bar { display:inline-block; width:46px; height:6px; border-radius:3px; background:var(--line); overflow:hidden; vertical-align:middle; }
   .cache-bar i { display:block; height:100%; }
@@ -201,7 +217,6 @@
     <button data-page="policies">转发策略</button>
     <div class="sep"></div>
     <button data-page="stats">统计</button>
-    <button data-page="logs">日志</button>
     <div class="sep"></div>
     <button data-page="settings">设置</button>
   </nav>
@@ -300,51 +315,34 @@
   <div class="row">
     <button class="primary" onclick="saveSettings()">保存设置</button>
     <button class="small" onclick="runCleanup()">立即清理</button>
-    <button class="small" onclick="rebuildStats(klogVKeyID)">重建统计</button>
+    <button class="small" title="从调用日志全量重算统计表；费用沿用每条调用发生时已记录的值，不会用当前价格重算历史，原始日志不受影响" onclick="rebuildStats()">重建统计</button>
     <span class="muted" id="s-status"></span></div>
 </section>
 
 <!-- ============ 统计（hash: #/stats 总览, #/stats/<id> 详情） ============ -->
 <section id="page-stats" class="hidden">
   <div class="row">
-    <button class="small hidden" id="st-back" onclick="go('#/stats')">← 返回</button>
-    <h2 class="page" style="margin:0" id="st-title">统计</h2>
-    <span class="muted" id="st-sub"></span>
+    <h2 class="page" style="margin:0">统计</h2>
     <span style="flex:1"></span>
+    <div class="seg" id="st-dim">
+      <button data-v="vkey" class="on">vKey 维度</button><button data-v="ukey">真实 Key 维度</button>
+    </div>
     <div class="seg" id="st-days">
       <button data-v="1">今天</button><button data-v="7" class="on">近 7 天</button>
       <button data-v="30">近 30 天</button><button data-v="0">全部</button>
     </div>
-    <button class="small" onclick="rebuildStats(klogVKeyID)">重建统计</button>
+    <button class="small" onclick="rebuildStats()">重建统计</button>
   </div>
-  <div id="st-overview"></div>
-  <div id="st-detail" class="hidden">
-    <div class="row" id="st-cards"></div>
-    <div class="panel"><h3>按天（每模型一行，柱高=调用量）</h3><div id="st-daily"></div></div>
-  </div>
+  <p class="desc" id="st-desc"></p>
+  <div id="st-list"></div>
 </section>
 
-<!-- ============ 日志（hash: #/logs 总览, #/logs/<id> 会话视图） ============ -->
+<!-- ============ 日志（#/logs/<id> 会话视图；无 id 重定向到统计） ============ -->
 <section id="page-logs" class="hidden">
-  <!-- 总览 -->
-  <div id="lg-overview">
-    <h2 class="page">日志</h2>
-    <div class="panel">
-      <div class="row">
-        <span>当前对话：<b id="lg-live-count">0</b> 个进行中 <span class="live-dot" id="lg-live-dot" style="display:none"></span></span>
-        <span class="muted">最后清理：<span id="lg-last-cleanup">-</span></span>
-        <span class="muted">日志总量：<span id="lg-total">0</span> 条</span>
-      </div>
-    </div>
-    <div class="panel"><h3>各虚拟 Key</h3>
-      <table><thead><tr><th>Key</th><th>名称</th><th>日志条数</th><th>tokens</th><th>最近活动</th><th>操作</th></tr></thead>
-      <tbody id="lg-keys"></tbody></table>
-    </div>
-  </div>
   <!-- 某个 Key 的会话视图：viewer 式横排时间轴 + 底部详情抽屉 -->
-  <div id="lg-session" class="hidden">
+  <div id="lg-session">
     <div class="row">
-      <button class="small" onclick="go('#/logs')">← 返回</button>
+      <button class="small" onclick="go('#/stats')">← 返回统计</button>
       <h2 class="page" style="margin:0">请求日志</h2>
       <span class="muted" id="klog-sub"></span>
       <span style="flex:1"></span>
@@ -580,7 +578,9 @@ document.addEventListener('click', e=>{
   const b = e.target.closest('.proto-seg button');
   if (b) b.parentElement.querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
   const d = e.target.closest('#st-days button');
-  if (d){ d.parentElement.querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===d)); routeRender(); }
+  if (d){ stDays = +d.dataset.v; localStorage.setItem('mg-st-days', stDays); renderStats(); }
+  const m = e.target.closest('#st-dim button');
+  if (m){ stDim = m.dataset.v; localStorage.setItem('mg-st-dim', stDim); renderStats(); }
 });
 async function addUpstream(){
   let name=$('up-name').value.trim();
@@ -864,52 +864,276 @@ async function rebuildStats(id){
   }catch(e){ alert(e.message); }
 }
 
-// ---------- 统计：#/stats 总览 + #/stats/<id> 天级详情 ----------
+// ---------- 统计：vKey 维度 / 真实 Key 维度，列表 + 展开明细 + 周同比 ----------
+let stDim = localStorage.getItem('mg-st-dim') || 'vkey';
+let stDays = +(localStorage.getItem('mg-st-days') || 7);
+// 展开状态：{ 'vkey-3': 'day', 'ukey-2': 'hour' }（维度+id+粒度，会话内保持）
+// 明细状态：stOpen 记粒度，stCollapsed 记被手动收起的块；默认展开
+const stOpen = new Map();
+const stCollapsed = new Set();
+
+// 同比展示：本期 vs 上一等长周期；上期为 0 显示 new
+function wow(cur, prev){
+  if (prev === 0) return cur > 0 ? '<span class="badge">new</span>' : '<span class="muted">-</span>';
+  const pct = ((cur - prev) / prev) * 100;
+  const cls = pct >= 0 ? 'ok' : 'err';
+  return `<span class="badge ${cls}" title="上期 ${prev.toLocaleString()}">${pct>=0?'+':''}${pct.toFixed(1)}%</span>`;
+}
+
 async function renderStats(){
-  const days = +($('st-days button.on')?.dataset.v ?? 7);
-  if (!route.id){ // 总览
-    $('st-back').classList.add('hidden'); $('st-sub').textContent='';
-    $('st-overview').classList.remove('hidden'); $('st-detail').classList.add('hidden');
-    $('st-title').textContent='统计';
-    const rows = (await api('/api/stats/overview?days='+days)) || [];
-    $('st-overview').innerHTML = `<table><thead><tr><th>Key</th><th>名称</th><th>调用</th><th>成/败</th><th>tokens</th><th>￥</th><th>积分</th><th>未计价</th><th></th></tr></thead><tbody>
-      ${rows.map(r=>`<tr style="cursor:pointer" onclick="go('#/stats/${r.virtual_key_id}')">
-        <td><code>${esc(r.virtual_key||('#'+r.virtual_key_id))}</code></td><td>${esc(r.name)}</td>
-        <td>${r.calls}</td><td>${r.ok}/${r.fail}</td>
-        <td>${(r.prompt_tokens+r.completion_tokens).toLocaleString()}</td>
-        <td>${fmtCNY(r.cost_cny)}</td><td>${r.cost_points>0?r.cost_points.toFixed(1):'-'}</td>
-        <td title="调用时模型无价格数据（多为自定义模型未配置价格）">${r.unpriced_calls||'-'}</td><td><button class="small">详情</button></td></tr>`).join('')}
-      </tbody></table>` || '<span class="hint">暂无数据</span>';
-    return;
-  }
-  $('st-back').classList.remove('hidden');
-  $('st-overview').classList.add('hidden'); $('st-detail').classList.remove('hidden');
-  const vks = (await api('/api/virtual-keys'))||[];
-  const v = vks.find(x=>x.id===route.id);
-  $('st-title').textContent='统计详情'; $('st-sub').textContent = v ? (v.key+(v.name?' · '+v.name:'')) : '#'+route.id;
-  const r = await api('/api/stats?days='+days+'&vkey_id='+route.id);
-  const daily = r.daily||[];
-  const sum = {calls:0,ok:0,fail:0,tokens:0,cny:0,points:0,unpriced:0};
-  daily.forEach(d=>{ sum.calls+=d.calls; sum.ok+=d.ok; sum.fail+=d.fail;
-    sum.tokens+=d.prompt_tokens+d.completion_tokens; sum.cny+=d.cost_cny; sum.points+=d.cost_points; sum.unpriced+=d.unpriced_calls; });
-  const card = (t,v)=>`<div class="panel" style="min-width:130px;padding:10px 14px"><div class="hint">${t}</div><b>${v}</b></div>`;
-  $('st-cards').innerHTML = card('总调用',sum.calls)+card('成功/失败',sum.ok+'/'+sum.fail)+
-    card('总 tokens',sum.tokens.toLocaleString())+card('费用 ￥',fmtCNY(sum.cny))+
-    card('积分',sum.points>0?sum.points.toFixed(1):'-')+card('未计价',sum.unpriced);
-  const maxCalls = Math.max(...daily.map(d=>d.calls),1);
-  const days_ = [...new Set(daily.map(d=>d.bucket))].sort().reverse();
-  $('st-daily').innerHTML = days_.map(day=>{
-    const rows = daily.filter(d=>d.bucket===day);
-    return `<div class="klog-item" style="cursor:default"><b>${day}</b>
-      ${rows.map(d=>`<div class="row" style="align-items:flex-start"><code style="min-width:170px;max-width:280px;white-space:normal;word-break:break-all">${esc(d.model)}</code>
-        <span class="bar-wrap"><span class="bar" style="width:${d.calls/maxCalls*180}px"></span></span>
-        <span class="hint">${d.calls} 次 · ${d.ok}成/${d.fail}败 · ${(d.prompt_tokens+d.completion_tokens).toLocaleString()} tok · ￥${fmtCNY(d.cost_cny)}${d.cost_points?' + '+d.cost_points.toFixed(1)+'积分':''}${d.unpriced_calls?` · ${d.unpriced_calls}未计价`:''}</span></div>`).join('')}
+  document.querySelectorAll('#st-dim button').forEach(b=>b.classList.toggle('on', b.dataset.v===stDim));
+  document.querySelectorAll('#st-days button').forEach(b=>b.classList.toggle('on', +b.dataset.v===stDays));
+  $('st-desc').textContent = stDim==='vkey'
+    ? '用户端视角：用量与消费行为。天级看消耗趋势（日/周同比），小时级看时段分布（vs 周均值）。'
+    : '资产视角：费用消耗与服务分布。';
+  if (stDim==='vkey') await renderVKeyStats();
+  else await renderUKStats();
+}
+
+// 维度全局汇总条
+function stSummaryBar(rows){
+  const sum = rows.reduce((a,r)=>{ a.calls+=r.calls; a.ok+=r.ok; a.tok+=(r.prompt_tokens+r.completion_tokens);
+    a.cny+=r.cost_cny; a.pts+=r.cost_points; a.cached+=r.prompt_cached_tokens||0; a.prompt+=r.prompt_tokens;
+    a.unpriced+=r.unpriced_calls||0; a.prev_tok+=r.prev_tokens||0; return a; },
+    {calls:0,ok:0,tok:0,cny:0,pts:0,cached:0,prompt:0,unpriced:0,prev_tok:0});
+  const cost = sum.cny>0 ? '￥'+fmtCNY(sum.cny) : sum.pts>0 ? sum.pts.toFixed(1)+' 积分' : '￥0';
+  return `<div class="panel" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <b>合计</b>
+    <span class="badge">调用 ${sum.calls}(${sum.ok}/${sum.calls-sum.ok})</span>
+    <span class="badge">tokens ${sum.tok.toLocaleString()}${sum.prev_tok?` 同比 ${((sum.tok-sum.prev_tok)/sum.prev_tok*100).toFixed(1)}%`:''}</span>
+    <span class="badge">消耗 ${cost}</span>
+    <span class="badge">平均单次 ${sum.calls?(sum.tok/sum.calls).toFixed(1):0} tok</span>
+    <span class="badge">缓存 ${sum.prompt>0?(sum.cached/sum.prompt*100).toFixed(1)+'%':'-'}</span>
+    ${sum.unpriced?`<span class="badge err">未计价 ${sum.unpriced}</span>`:''}</div>`;
+}
+
+async function renderVKeyStats(){
+  const rows = (await api('/api/stats/vkeys?days='+stDays)) || [];
+  if (!rows.length){ $('st-list').innerHTML = '<div class="empty"><b>暂无统计数据</b>发起调用后这里会按 vKey 汇总</div>'; return; }
+  const pols = (await api('/api/policies')) || [];
+  const vks = (await api('/api/virtual-keys')) || [];
+  $('st-list').innerHTML = stSummaryBar(rows) + rows.map(r=>{
+    const v = vks.find(x=>x.id===r.virtual_key_id);
+    const pol = pols.find(p=>p.id===v?.policy_id);
+    const tokens = r.prompt_tokens + r.completion_tokens;
+    const key = 'vkey-'+r.virtual_key_id;
+    const gran = stCollapsed.has(key) ? null : (stOpen.get(key) || 'day');
+    return `<div class="up-card">
+      <div class="head"><b>${esc(r.name||r.virtual_key||('#'+r.virtual_key_id))}</b>
+        <span class="muted"><code>${esc(r.virtual_key)}</code>${pol?' · '+esc(pol.name):''}</span>
+        <span class="badge">调用 ${r.calls}(${r.ok}/${r.fail})</span>
+        <span class="badge">↑${r.prompt_tokens.toLocaleString()} ↓${r.completion_tokens.toLocaleString()}</span>
+        <span class="badge">￥${fmtCNY(r.cost_cny)}</span>
+        <span title="tokens 同比（本期 vs 上期）">tokens ${wow(tokens, r.prev_tokens)}</span>
+        <span style="flex:1"></span>
+        <button class="small" onclick="go('#/logs/${r.virtual_key_id}')">日志</button>
+        <button class="small" onclick="stToggle('vkey-${r.virtual_key_id}')">${gran?'收起':'明细'}</button></div>
+      ${gran ? `<div class="edit-box" id="std-vkey-${r.virtual_key_id}"><span class="hint">加载中…</span></div>` : ''}
     </div>`;
-  }).join('') || '<span class="hint">暂无统计数据</span>';
+  }).join('');
+  // 已展开的异步装明细
+  for (const el of document.querySelectorAll('[id^=std-vkey-]')) stLoadVKeySeries(+el.id.slice('std-vkey-'.length));
+}
+
+function stToggle(key){ stCollapsed.has(key) ? stCollapsed.delete(key) : stCollapsed.add(key); renderStats(); }
+function stGran(key, gran){ stOpen.set(key, gran); renderStats(); }
+
+async function stLoadVKeySeries(id){
+  const gran = stOpen.get('vkey-'+id) || 'day';
+  const box = $('std-vkey-'+id);
+  if (!box) return;
+  const days = gran==='hour' ? 7 : (stDays===1?1:Math.max(stDays,2)); // 小时固定 7 天窗口支撑周均线
+  const series = (await api(`/api/stats/vkeys/${id}?gran=${gran}&days=${days}`)) || [];
+  // 天级对照=上周同日（窗口+7）；小时级固定取 7 天窗口算周均线
+  const prev = gran==='day' && stDays>0 ? ((await api(`/api/stats/vkeys/${id}?gran=day&days=${days+7}`))||[]) : [];
+  box.innerHTML = stSeriesHTML('vkey-'+id, gran, series, prev);
+}
+
+// 小时桶位移：'2026-10-19 14' 前/后 n 天的同小时
+function stHourShift(bucket, days){
+  const sp = bucket.indexOf(' ');
+  const d = sp<0 ? bucket : bucket.slice(0,sp);
+  const h = sp<0 ? '' : bucket.slice(sp+1);
+  const dt = new Date(d+'T00:00:00');
+  dt.setDate(dt.getDate()+days);
+  // 手动按本地时区格式化，避免 toISOString 的 UTC 偏移导致日期错位
+  const y=dt.getFullYear(), m=String(dt.getMonth()+1).padStart(2,'0'), day=String(dt.getDate()).padStart(2,'0');
+  return h ? y+'-'+m+'-'+day+' '+h : y+'-'+m+'-'+day;
+}
+
+// ---------- 图表与指标 ----------
+// 资源口径：有花费用钱，积分制用积分（按序列整体判断单位）
+function stUnit(series){
+  let cny=0, pts=0;
+  series.forEach(d=>{ cny+=d.cost_cny||0; pts+=d.cost_points||0; });
+  return cny>0 ? {get:d=>d.cost_cny||0, fmt:v=>'￥'+fmtCNY(v), label:'费用￥'}
+               : {get:d=>d.cost_points||0, fmt:v=>v.toFixed(1), label:'积分'};
+}
+const stTok = d => (d.prompt_tokens+d.completion_tokens);
+// 指标条：调用(成/败) · 平均单次 tokens · 缓存命中率 · 未计价
+function stChips(series){
+  const sum = series.reduce((a,d)=>{ a.calls+=d.calls; a.ok+=d.ok; a.tok+=stTok(d); a.cached+=d.prompt_cached_tokens||0; a.prompt+=d.prompt_tokens; a.unpriced+=d.unpriced_calls||0; return a; },{calls:0,ok:0,tok:0,cached:0,prompt:0,unpriced:0});
+  const avg = sum.calls? sum.tok/sum.calls : 0;
+  const cache = sum.prompt>0 ? (sum.cached/sum.prompt*100).toFixed(1)+'%' : '-';
+  return `<span class="badge">调用 ${sum.calls}(${sum.ok}/${sum.calls-sum.ok})</span>
+    <span class="badge">平均单次 ${avg.toFixed(1)} tok</span>
+    <span class="badge" title="prompt 缓存命中 ${sum.cached.toLocaleString()} / ${sum.prompt.toLocaleString()}">缓存 ${cache}</span>
+    ${sum.unpriced?`<span class="badge err" title="模型无价格数据的调用">未计价 ${sum.unpriced}</span>`:''}`;
+}
+// 天级折线图：主指标折线 + 7 日移动平均（周均线），点悬停看同比
+function stDayChart(series, prevMap){
+  const u = stUnit(series);
+  const asc = series.slice().reverse();
+  const W=640, H=72, PAD=6;
+  const vals = asc.map(u.get);
+  const max = Math.max(...vals, 1e-9);
+  const x = i => PAD + i*(W-2*PAD)/Math.max(asc.length-1,1);
+  const y = v => H-PAD-(v/max)*(H-2*PAD);
+  const line = pts => pts.map((v,i)=>x(i).toFixed(1)+','+y(v).toFixed(1)).join(' ');
+  // 7 日移动平均（不足 7 天用现有天数）
+  const ma = vals.map((_,i)=>{ const s=Math.max(0,i-6); return vals.slice(s,i+1).reduce((a,b)=>a+b,0)/(i-s+1); });
+  const dots = asc.map((d,i)=>{
+    const v = vals[i];
+    const tok = stTok(d);
+    const day = prevMap[stHourShift(d.bucket,-1)] ?? 0;
+    const week = prevMap[stHourShift(d.bucket,-7)] ?? 0;
+    return `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.5" fill="var(--accent)">
+      <title>${d.bucket} · ${u.fmt(v)} · tokens ${tok.toLocaleString()} · 日同比 ${day?((tok-day)/day*100).toFixed(1)+'%':'-'} · 周同比 ${week?((tok-week)/week*100).toFixed(1)+'%':'-'}</title></circle>`;
+  }).join('');
+  const step = Math.max(1, Math.ceil(asc.length/8));
+  const labels = asc.map((d,i)=> i%step===0 ? `<text x="${x(i).toFixed(1)}" y="${H-1}" font-size="9" fill="var(--dim)" text-anchor="middle">${d.bucket.slice(5)}</text>`:'').join('');
+  return `<div class="row" style="margin:2px 0"><span class="hint"><i style="display:inline-block;width:14px;height:2px;background:var(--accent);vertical-align:middle"></i> 每日${u.label}
+    <i style="display:inline-block;width:14px;height:2px;background:var(--dim);vertical-align:middle;margin-left:8px;border-top:1px dashed var(--dim);background:none"></i> 周均线(7日MA)</span></div>
+  <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+    <polyline points="${line(ma)}" fill="none" stroke="var(--dim)" stroke-width="1" stroke-dasharray="4 3" opacity=".8"/>
+    <polyline points="${line(vals)}" fill="none" stroke="var(--accent)" stroke-width="2"/>
+    ${dots}${labels}</svg>`;
+}
+// 小时图：当日柱 + 一周同小时平均线（7 天窗口，不含当日）
+function stHourChart(series){
+  const u = stUnit(series);
+  const byBucket = {}; series.forEach(x=>byBucket[x.bucket]=x);
+  const lastDay = series.map(x=>x.bucket.slice(0,10)).sort().pop();
+  const cur = h => byBucket[lastDay+' '+String(h).padStart(2,'0')];
+  // 周均：按小时聚合 7 天窗口内、排除最新一天
+  const acc = Array(24).fill(0).map(()=>({sum:0,n:0}));
+  series.forEach(x=>{ if (x.bucket.slice(0,10)===lastDay) return;
+    const h=+x.bucket.slice(11,13); if (h>=0&&h<24){ acc[h].sum+=u.get(x); acc[h].n++; } });
+  const avg = acc.map(a=>a.n? a.sum/a.n : 0);
+  const curVals = Array.from({length:24},(_,h)=>cur(h)?u.get(cur(h)):0);
+  // 最新一天若是今天：当前小时之后的时段尚未发生，折线截止到当前小时，后半段不画
+  const today = new Date().toLocaleDateString('sv-SE');
+  const isToday = lastDay === today;
+  const lastH = isToday ? new Date().getHours() : 23;
+  const max = Math.max(...curVals, ...avg, 1e-9);
+  const hasAvg = avg.some(a=>a>0);
+  // 双折线（与天级图同款 SVG）：当日线(accent) + 一周同小时均值线(warn 虚线)
+  const W=640, H=72, PAD=6;
+  const x = h => PAD + h*(W-2*PAD)/23;
+  const y = v => H-PAD-(v/max)*(H-2*PAD);
+  // 当日线只画到已发生的时段；周均线是历史均值，画满 24 小时
+  const line = (vals, upto) => vals.slice(0, (upto??lastH)+1).map((v,h)=>x(h).toFixed(1)+','+y(v).toFixed(1)).join(' ');
+  const dots = Array.from({length:lastH+1},(_,h)=>{
+    const c=curVals[h], a=avg[h];
+    const d=cur(h);
+    const tip=`${lastDay} ${String(h).padStart(2,'0')} 时 · 当日 ${u.fmt(c)}${d?` · tokens ${stTok(d).toLocaleString()}`:''} · 周均 ${u.fmt(a)}${a>0?` · ${((c-a)/a*100).toFixed(1)}%`:''}`;
+    return `<circle cx="${x(h).toFixed(1)}" cy="${y(c).toFixed(1)}" r="2.5" fill="var(--accent)"><title>${tip}</title></circle>`;
+  }).join('');
+  const labels = Array.from({length:24},(_,h)=> h%3===0 ? `<text x="${x(h).toFixed(1)}" y="${H-1}" font-size="9" fill="var(--dim)" text-anchor="middle">${h}</text>`:'').join('');
+  // 当前时间竖线（仅当天视图）
+  const now = new Date();
+  const nowX = x(now.getHours() + now.getMinutes()/60);
+  const nowLine = isToday ? `<line x1="${nowX.toFixed(1)}" y1="2" x2="${nowX.toFixed(1)}" y2="${H-12}" stroke="var(--dim)" stroke-width="1" stroke-dasharray="3 2">
+      <title>当前时间 ${now.toLocaleTimeString('zh-CN',{hour12:false,hour:'2-digit',minute:'2-digit'})}</title></line>` : '';
+  return `<div class="row" style="margin:2px 0"><span class="hint"><b>${lastDay}</b> 24 小时分布
+    <i style="display:inline-block;width:14px;height:2px;background:var(--accent);vertical-align:middle"></i> 当日
+    <i style="display:inline-block;width:14px;height:2px;background:var(--warn);vertical-align:middle;margin-left:8px;border-top:1px dashed var(--warn);background:none"></i> 一周同小时均值${hasAvg?'':'（近一周暂无数据）'}</span></div>
+  <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+    ${nowLine}
+    ${hasAvg?`<polyline points="${line(avg,23)}" fill="none" stroke="var(--warn)" stroke-width="1.2" stroke-dasharray="4 3" opacity=".9"/>`:''}
+    <polyline points="${line(curVals)}" fill="none" stroke="var(--accent)" stroke-width="2"/>
+    ${dots}${labels}</svg>`;
+}
+
+function stSeriesHTML(key, gran, series, prevSeries, metric){
+  const segBtn = (g,label)=>`<button class="small" ${g===gran?'style="background:var(--accent);color:#fff"':''} onclick="stGran('${key}','${g}')">${label}</button>`;
+  if (!series.length) return `<div class="row">${segBtn('day','按天')}${segBtn('hour','按小时')}<span class="hint">该粒度暂无数据</span></div>`;
+  const tokVal = d => stTok(d) || 0;
+  const prevMap = {};
+  (prevSeries||[]).forEach(x=>prevMap[x.bucket] = tokVal(x));
+  const chart = gran==='day' ? stDayChart(series, prevMap) : stHourChart(series);
+  const chips = `<div class="row" style="margin:2px 0">${stChips(series)}</div>`;
+  const head = gran==='day'
+    ? '<th>日期</th><th>调用(成/败)</th><th>消耗</th><th>tokens</th><th>平均单次</th><th>缓存率</th><th>日同比</th><th>周同比</th>'
+    : '<th>小时</th><th>调用(成/败)</th><th>tokens</th><th>平均单次</th><th>缓存率</th><th>vs 周均值</th>';
+  const u = stUnit(series);
+  const weekAvg = gran==='hour' ? (()=>{ // 与图表同口径：排除最新一天的各小时均值
+    const lastDay = series.map(x=>x.bucket.slice(0,10)).sort().pop();
+    const acc={};
+    series.forEach(x=>{ if(x.bucket.slice(0,10)===lastDay) return; const h=x.bucket.slice(11,13); (acc[h]=acc[h]||[]).push(tokVal(x)); });
+    const m={}; Object.keys(acc).forEach(h=>m[h]=acc[h].reduce((a,b)=>a+b,0)/acc[h].length);
+    return m; })() : null;
+  const rows = series.map(d=>{
+    const tok=tokVal(d), avg=d.calls?tok/d.calls:0;
+    const cache=(d.prompt_cached_tokens||0)>0&&d.prompt_tokens>0?(d.prompt_cached_tokens/d.prompt_tokens*100).toFixed(1)+'%':'-';
+    const cmp=(base,cur)=>base>0?((cur-base)/base*100).toFixed(1)+'%':'-';
+    if (gran==='day'){
+      const day=prevMap[stHourShift(d.bucket,-1)]??0, week=prevMap[stHourShift(d.bucket,-7)]??0;
+      return `<tr><td>${esc(d.bucket)}</td><td>${d.calls}(${d.ok}/${d.fail})</td><td>${u.fmt(u.get(d))}</td>
+        <td>${tok.toLocaleString()}</td><td>${avg.toFixed(1)}</td><td>${cache}</td>
+        <td>${day?cmp(day,tok):'-'}</td><td>${week?cmp(week,tok):'-'}</td></tr>`;
+    }
+    const h=d.bucket.slice(11,13), a=weekAvg[h]||0;
+    return `<tr><td>${esc(d.bucket)}</td><td>${d.calls}(${d.ok}/${d.fail})</td>
+      <td>${tok.toLocaleString()}</td><td>${avg.toFixed(1)}</td><td>${cache}</td>
+      <td>${a>0?cmp(a,tok):'-'}</td></tr>`;
+  }).join('');
+  return `<div class="row">${segBtn('day','按天')}${segBtn('hour','按小时')}</div>${chips}${chart}
+    <table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function renderUKStats(){
+  const rows = (await api('/api/stats/upstream-keys?days='+stDays)) || [];
+  if (!rows.length){ $('st-list').innerHTML = '<div class="empty"><b>暂无统计数据</b>新维度统计从现在开始积累；历史数据可点右上「重建统计」补全</div>'; return; }
+  $('st-list').innerHTML = stSummaryBar(rows) + rows.map(r=>{
+    const key = 'ukey-'+r.id;
+    const gran = stCollapsed.has(key) ? null : (stOpen.get(key) || 'day');
+    return `<div class="up-card">
+      <div class="head"><b>${esc(r.upstream)} · ${esc(r.label||('Key#'+r.id))}</b>
+        ${r.enabled?'':'<span class="badge err">已停用</span>'}
+        <span class="badge">服务 ${r.vkey_count} 个 vKey</span>
+        <span class="badge">调用 ${r.calls}(${r.ok}/${r.fail})</span>
+        <span class="badge">↑${r.prompt_tokens.toLocaleString()} ↓${r.completion_tokens.toLocaleString()}</span>
+        <span class="badge">￥${fmtCNY(r.cost_cny)}${r.cost_points>0?' + '+r.cost_points.toFixed(1)+'积分':''}</span>
+        <span title="费用同比（本期 vs 上期）">费用 ${wow(r.cost_cny, r.prev_cost_cny)}</span>
+        <span style="flex:1"></span>
+        <button class="small" onclick="stToggle('ukey-${r.id}')">${gran?'收起':'明细'}</button></div>
+      ${gran ? `<div class="edit-box" id="std-ukey-${r.id}"><span class="hint">加载中…</span></div>` : ''}
+    </div>`;
+  }).join('');
+  for (const el of document.querySelectorAll('[id^=std-ukey-]')) stLoadUKDetail(+el.id.slice('std-ukey-'.length));
+}
+
+async function stLoadUKDetail(id){
+  const gran = stOpen.get('ukey-'+id) || 'day';
+  const box = $('std-ukey-'+id);
+  if (!box) return;
+  const days = gran==='hour' ? 7 : (stDays===1?1:Math.max(stDays,2));
+  const r = (await api(`/api/stats/upstream-keys/${id}?gran=${gran}&days=${days}`)) || {};
+  const prev = gran==='day' && stDays>0 ? (((await api(`/api/stats/upstream-keys/${id}?gran=day&days=${days+7}`))||{}).series||[]) : [];
+  const dist = r.vkeys || [];
+  const vkTable = dist.length ? `<h3 style="margin:12px 0 4px">被哪些虚拟 Key 使用</h3>
+    <table><thead><tr><th>vKey</th><th>名称</th><th>调用</th><th>tokens</th><th>￥</th><th>费用占比</th></tr></thead><tbody>
+    ${(()=>{ const total = dist.reduce((a,x)=>a+x.cost_cny,0) || 1;
+      return dist.map(x=>`<tr><td><code>${esc(x.virtual_key)}</code></td><td>${esc(x.name)}</td>
+        <td>${x.calls}</td><td>${(x.prompt_tokens+x.completion_tokens).toLocaleString()}</td>
+        <td>${fmtCNY(x.cost_cny)}</td><td>${(x.cost_cny/total*100).toFixed(1)}%</td></tr>`).join(''); })()}
+    </tbody></table>` : '<span class="hint">该周期内无 vKey 使用</span>';
+  box.innerHTML = stSeriesHTML('ukey-'+id, gran, r.series||[], prev) + vkTable;
 }
 
 // ---------- 日志：#/logs 总览 + #/logs/<id> 会话视图（初始20，+20/次，最多100，刷新回20） ----------
-let klogWS = null, klogCalls = [], klogLiveItems = new Set(), lgLive = 0;
+let klogWS = null, klogCalls = [], klogLiveItems = new Set();
 let klogLimit = 20;
 const KLOG_PAGE = 20, KLOG_MAX = 100;
 // 分段间隔分段滑块
@@ -923,8 +1147,7 @@ document.querySelectorAll('#klog-gap button').forEach(b => b.onclick = () => {
   klogRender();
 });
 async function renderLogs(){
-  if (!route.id){ await renderLogsOverview(); return; }
-  $('lg-overview').classList.add('hidden'); $('lg-session').classList.remove('hidden');
+  if (!route.id){ go('#/stats'); return; } // 无 id 的日志入口已并入统计页
   const vks = (await api('/api/virtual-keys'))||[];
   const v = vks.find(x=>x.id===route.id);
   $('klog-sub').textContent = v ? (v.key+(v.name?' · '+v.name:'')) : '#'+route.id;
@@ -1127,6 +1350,22 @@ function msgHTML(m){
     <span class="role role-${role}">${esc(role)}</span><span class="msg-preview">${esc(preview)}</span></div>
     <div class="msg-body hidden">${body}</div></div>`;
 }
+// 工具定义卡片：对齐 viewer 的 Tools 区——名称徽章 + 描述预览，展开看完整描述与参数 schema
+function toolsHTML(tools){
+  return (tools||[]).map(t=>{
+    const fn = t.function || t; // chat-completions 包一层 function；Responses API 直接平铺
+    const name = fn.name || t.type || '?';
+    const desc = fn.description || '';
+    let body = '';
+    if (desc) body += '<pre>'+esc(desc)+'</pre>';
+    if (fn.parameters) body += '<pre>'+esc(JSON.stringify(fn.parameters,null,2))+'</pre>';
+    if (!body) body = '<span class="hint">（无描述与参数）</span>';
+    const preview = desc.replace(/\s+/g,' ').slice(0,80);
+    return '<div class="msg role-tool"><div class="msg-hdr" onclick="this.nextElementSibling.classList.toggle(\'hidden\')">'+
+      '<span class="role role-tool">'+esc(name)+'</span><span class="msg-preview">'+esc(preview)+'</span></div>'+
+      '<div class="msg-body hidden">'+body+'</div></div>';
+  }).join('') || '<span class="hint">无 tools</span>';
+}
 // Headers 展示：JSON map → 键值行
 function headersHTML(s){
   let h={};
@@ -1146,26 +1385,31 @@ async function klogDetail(id){
   let bar=''; chunks.forEach((ch,i)=>{ bar+='<span title="#'+ch.seq+' +'+gaps[i]+'ms" style="height:'+Math.max(gaps[i]/maxGap*60,3)+'px"></span>'; });
   const pre = s=>{ try{ return JSON.stringify(JSON.parse(s),null,2) }catch{ return s||'（空）' } };
   let body={}; try{ body=JSON.parse(c.req_body||'{}'); }catch{}
+  // 截断抢救：body 超归档上限被截断时 JSON.parse 失败，按键名扫描前缀、括号配对逐项还原
+  const scanJSONItems = (src, key)=>{
+    const idx = src.indexOf('"'+key+'":[');
+    if (idx<0) return [];
+    // 字符串感知扫描：跳过字符串字面量内部的 { } "，否则内容含代码时配对会错乱
+    let i = idx+key.length+3, depth=0, start=-1, inStr=false, esc=false;
+    const items=[];
+    for (; i<src.length && i<idx+key.length+3+4*1024*1024; i++){
+      const ch=src[i];
+      if (inStr){ if (esc) esc=false; else if (ch==='\\') esc=true; else if (ch==='"') inStr=false; continue; }
+      if (ch==='"'){ inStr=true; continue; }
+      if (ch==='{'){ if(depth===0) start=i; depth++; }
+      else if (ch==='}' && depth>0){ depth--;
+        if (depth===0 && start>=0){ try{ items.push(JSON.parse(src.slice(start,i+1))); }catch{} start=-1; } }
+      else if (ch===']' && depth===0) break;
+    }
+    return items;
+  };
   // messages 兼容两种协议：chat-completions 的 messages / Responses API 的 input（typed items）
   let messages = body.messages||[];
   // 截断抢救：body 超归档上限被截断时 JSON.parse 失败，但 messages/input 在 body 前部，
   // 按括号配对逐项解析前缀即可还原（尾部残缺项丢弃）
   if (!Object.keys(body).length && c.req_body){
     for (const key of ['messages','input']){
-      const idx = c.req_body.indexOf('"'+key+'":[');
-      if (idx<0) continue;
-      // 字符串感知扫描：跳过字符串字面量内部的 { } "，否则内容含代码时配对会错乱
-      let i = idx+key.length+3, depth=0, start=-1, inStr=false, esc=false;
-      const items=[];
-      for (; i<c.req_body.length && i<idx+key.length+3+4*1024*1024; i++){
-        const ch=c.req_body[i];
-        if (inStr){ if (esc) esc=false; else if (ch==='\\') esc=true; else if (ch==='"') inStr=false; continue; }
-        if (ch==='"'){ inStr=true; continue; }
-        if (ch==='{'){ if(depth===0) start=i; depth++; }
-        else if (ch==='}' && depth>0){ depth--;
-          if (depth===0 && start>=0){ try{ items.push(JSON.parse(c.req_body.slice(start,i+1))); }catch{} start=-1; } }
-        else if (ch===']' && depth===0) break;
-      }
+      const items = scanJSONItems(c.req_body, key);
       if (items.length){ messages = items.filter(x=>x&&(x.type==='message'||x.role)).map(x=>({role:x.role||'user',content:x.content||x.text})); break; }
     }
   }
@@ -1178,6 +1422,8 @@ async function klogDetail(id){
     const m = c.req_body.match(/"instructions"\s*:\s*"((?:[^"\\]|\\.)*)"/);
     if (m){ try{ messages = [{role:'instructions', content:JSON.parse('"'+m[1]+'"')}]; }catch{} }
   }
+  // tools 在 body 尾部（input 之后），截断时 JSON.parse 必失败，同样走前缀扫描抢救
+  let tools = Array.isArray(body.tools) ? body.tools : scanJSONItems(c.req_body||'', 'tools');
   // viewer 分类：文本 / 思考 / 工具调用 分开合并
   const merged = {content:'', reasoning:'', tools:[]};
   const mergeChunk = d=>{
@@ -1186,8 +1432,8 @@ async function klogDetail(id){
     if (delta?.content) merged.content += delta.content;
     if (delta?.reasoning_content) merged.reasoning += delta.reasoning_content;
     (delta?.tool_calls||[]).forEach(tc=>{ if(tc.function?.arguments) merged.tools.push(tc.function.name+': '+tc.function.arguments); });
-    // Responses API：output_text.delta / response.completed 汇总
-    if (d.type==='output_text.delta' && d.delta) merged.content += d.delta;
+    // Responses API：response.output_text.delta 正文增量（原严格相等少了 response. 前缀，一直匹配不上）
+    if (String(d.type||'').endsWith('output_text.delta') && d.delta) merged.content += d.delta;
     if (String(d.type||'').includes('reasoning') && d.delta) merged.reasoning += d.delta;
     if (d.type==='response.output_item.done' && d.item?.type==='function_call'){
       merged.tools.push((d.item.name||'?')+': '+(d.item.arguments||''));
@@ -1205,11 +1451,24 @@ async function klogDetail(id){
     if (String(d.type||'').includes('custom_tool_call_input.delta') && d.delta && merged.tools.length){
       merged.tools[merged.tools.length-1] += d.delta;
     }
+    // response.completed 携带全量 output：流式 delta 已累计，这里仅兜底避免翻倍；
+    // GLM 的 reasoning item 用 content[](type=reasoning_text) 承载思考文本，归思考区而非正文
     if (d.type==='response.completed' && d.response?.output){
+      let cText='', rText='';
       d.response.output.forEach(o=>{
-        if(o.type==='function_call') merged.tools.push((o.name||'?')+': '+(o.arguments||''));
-        (o.content||[]).forEach(p=>{ if(p.text) merged.content += p.text; });
+        if(o.type==='function_call'){
+          const entry=(o.name||'?')+': '+(o.arguments||'');
+          if(!merged.tools.includes(entry)) merged.tools.push(entry);
+        }
+        (o.content||[]).forEach(p=>{
+          if(!p.text) return;
+          if(o.type==='reasoning' || String(p.type||'').includes('reasoning')) rText += p.text;
+          else cText += p.text;
+        });
+        (o.summary||[]).forEach(p=>{ if(p.text) rText += p.text; });
       });
+      if(!merged.content) merged.content = cText;
+      if(!merged.reasoning) merged.reasoning = rText;
     }
   };
   if (chunks.length){ chunks.forEach(ch=>{ try{ mergeChunk(JSON.parse(ch.data)); }catch{} }); }
@@ -1227,6 +1486,7 @@ async function klogDetail(id){
     '<div class="row" style="margin:2px 0"><span class="hint">转发 →</span><code style="white-space:normal;word-break:break-all">'+esc(c.upstream_url||(c.upstream?c.upstream:'(未记录)'))+'</code></div>'+
     sec('请求 Headers', 1, headersHTML(c.req_headers))+
     sec('请求体 · Messages', messages.length, messages.map(msgHTML).join('') || '<span class="hint">无 messages</span>')+
+    sec('请求体 · Tools', tools.length, toolsHTML(tools))+
     sec('请求体 · 原始 JSON', 1, '<pre>'+esc(pre(c.req_body))+'</pre>')+
     sec('响应 Headers', 1, headersHTML(c.resp_headers))+
     sec('响应体 · Content', 1, '<pre>'+esc(merged.content||'（空）')+'</pre>')+
@@ -1238,40 +1498,9 @@ async function klogDetail(id){
   openDrawer();
 }
 
-async function renderLogsOverview(){
-  $('lg-overview').classList.remove('hidden'); $('lg-session').classList.add('hidden');
-  const r = await api('/api/calls/overview');
-  $('lg-total').textContent = r.call_count;
-  const ts = +r.last_cleanup_at;
-  $('lg-last-cleanup').textContent = ts ? new Date(ts).toLocaleString('zh-CN',{hour12:false}) : '从未执行';
-  $('lg-keys').innerHTML = ((r.keys)||[]).map(k=>
-    '<tr><td><code>'+esc(k.virtual_key)+'</code></td><td>'+esc(k.name)+'</td><td>'+k.calls+'</td>'+
-    '<td>'+k.tokens.toLocaleString()+'</td><td>'+(k.last_at?fmtMS(k.last_at):'-')+'</td>'+
-    '<td><button class="small" onclick="go(\'#/logs/'+k.virtual_key_id+'\')">查看</button></td></tr>').join('')
-    || '<tr><td colspan=6 class=muted>暂无日志</td></tr>';
-  if (klogWS===null){
-    const proto = location.protocol==='https:'?'wss':'ws';
-    klogWS = new WebSocket(proto+'://'+location.host+'/api/live'+(token?'?token='+encodeURIComponent(token):''));
-    klogWS.onmessage = ev=>{
-      const m = JSON.parse(ev.data);
-      if (m.type==='call_start'){ lgLive++; }
-      if (m.type==='call_end'){ lgLive=Math.max(0,lgLive-1); }
-      $('lg-live-count').textContent = lgLive;
-      $('lg-live-dot').style.display = lgLive>0?'':'none';
-    };
-    klogWS.onclose = ()=>{ klogWS=null; };
-  }
-}
-
 async function del(path,fn,msg){ cfAsk('确认删除？', msg||'', async()=>{ try{await api(path,{method:'DELETE'});fn&&fn();refresh();}catch(e){alert(e.message)} }); }
 async function refresh(){ await loadUpKeys(); await loadVirtualKeys(); }
 
-// ---------- 日志 ----------
-let page = 0;
-async function loadVkeyFilter(){
-  const l = (await api('/api/virtual-keys')) || [];
-  $('f-vkey').innerHTML = '<option value="">全部虚拟Key</option>' + l.map(v=>`<option value="${v.id}">${esc(v.key)}</option>`).join('');
-}
 (async()=>{ await loadMl(); await loadUpKeys(); loadVirtualKeys(); routeRender(); })();
 </script>
 <!-- 详情抽屉：点击横排行滑出 -->

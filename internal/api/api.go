@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -66,6 +67,10 @@ func New(st *store.Store, token string, cat *provider.Source) http.Handler {
 	mux.HandleFunc("PUT /api/settings", s.putSettings)
 	mux.HandleFunc("GET /api/stats", s.getStats)
 	mux.HandleFunc("GET /api/stats/overview", s.getStatsOverview)
+	mux.HandleFunc("GET /api/stats/vkeys", s.getVKeyStats)
+	mux.HandleFunc("GET /api/stats/vkeys/{id}", s.getVKeySeries)
+	mux.HandleFunc("GET /api/stats/upstream-keys", s.getUKStats)
+	mux.HandleFunc("GET /api/stats/upstream-keys/{id}", s.getUKDetail)
 	mux.HandleFunc("GET /api/calls/overview", s.getCallsOverview)
 	mux.HandleFunc("POST /api/stats/rebuild", s.rebuildStats)
 	mux.HandleFunc("POST /api/cleanup", s.runCleanup)
@@ -265,6 +270,86 @@ func (s *Server) rebuildStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) getVKeyStats(w http.ResponseWriter, r *http.Request) {
+	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
+	rows, err := s.store.VKeyStats(days)
+	if err != nil {
+		mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rows)
+}
+
+func (s *Server) getVKeySeries(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "无效 id")
+		return
+	}
+	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
+	daily := r.URL.Query().Get("gran") != "hour"
+	rows, err := s.store.StatBuckets(id, daily, days)
+	if err != nil {
+		mapErr(w, err)
+		return
+	}
+	// 按桶聚合掉 model 维度，前端直接画
+	agg := map[string]*store.StatRow{}
+	for _, x := range rows {
+		k, ok := agg[x.Bucket]
+		if !ok {
+			k = &store.StatRow{Bucket: x.Bucket}
+			agg[x.Bucket] = k
+		}
+		k.Calls += x.Calls
+		k.OK += x.OK
+		k.Fail += x.Fail
+		k.PromptTokens += x.PromptTokens
+		k.CompletionTokens += x.CompletionTokens
+		k.CostCNY += x.CostCNY
+		k.CostPoints += x.CostPoints
+		k.UnpricedCalls += x.UnpricedCalls
+		k.PromptCached += x.PromptCached
+	}
+	out := make([]store.StatRow, 0, len(agg))
+	for _, v := range agg {
+		out = append(out, *v)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Bucket > out[j].Bucket })
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) getUKStats(w http.ResponseWriter, r *http.Request) {
+	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
+	rows, err := s.store.UKStats(days)
+	if err != nil {
+		mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rows)
+}
+
+func (s *Server) getUKDetail(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "无效 id")
+		return
+	}
+	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
+	daily := r.URL.Query().Get("gran") != "hour"
+	series, err := s.store.UKSeries(id, daily, days)
+	if err != nil {
+		mapErr(w, err)
+		return
+	}
+	dist, err := s.store.UKVKeyDist(id, days)
+	if err != nil {
+		mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"series": series, "vkeys": dist})
 }
 
 func (s *Server) runCleanup(w http.ResponseWriter, r *http.Request) {
