@@ -19,6 +19,10 @@ type Call struct {
 	Method           string  `json:"method"`
 	Path             string  `json:"path"`
 	UpstreamURL      string  `json:"upstream_url"`
+	SessionID        string  `json:"session_id"` // 客户端会话标识（如 Codex Session-Id），空=未识别
+	Client           string  `json:"client"`     // 客户端标识（如 Codex Desktop）
+	TurnID           string  `json:"turn_id"`    // 轮次标识（如 Codex turn_id），空=未提供
+	LastMsgRole      string  `json:"last_msg_role"` // 请求末条消息类型（user/tool/tool_call...），空=未解析
 	Model            string  `json:"model"`
 	StatusCode       *int    `json:"status_code"`
 	ReqHeaders       string  `json:"req_headers"`
@@ -58,6 +62,10 @@ type NewCall struct {
 	Method           string
 	Path             string
 	UpstreamURL      string
+	SessionID        string
+	Client           string
+	TurnID           string
+	LastMsgRole      string
 	Model            string
 	StatusCode       *int
 	ReqHeaders       string
@@ -81,12 +89,12 @@ type NewCall struct {
 
 // InsertCall 写入调用记录并返回 id。
 func (s *Store) InsertCall(c NewCall) (int64, error) {
-	res, err := s.db.Exec(`INSERT INTO calls(virtual_key_id, upstream_id, upstream_key_id, method, path, upstream_url, model,
+	res, err := s.db.Exec(`INSERT INTO calls(virtual_key_id, upstream_id, upstream_key_id, method, path, upstream_url, session_id, client, turn_id, last_msg_role, model,
 		status_code, req_headers, req_body, resp_headers, resp_body, stream, chunk_count,
 		prompt_tokens, completion_tokens, total_tokens, prompt_cached_tokens, cost_cny, cost_points, error,
 		started_at, upstream_ms, first_byte_ms, ended_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		c.VirtualKeyID, c.UpstreamID, c.UpstreamKeyID, c.Method, c.Path, c.UpstreamURL, c.Model,
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		c.VirtualKeyID, c.UpstreamID, c.UpstreamKeyID, c.Method, c.Path, c.UpstreamURL, c.SessionID, c.Client, c.TurnID, c.LastMsgRole, c.Model,
 		c.StatusCode, c.ReqHeaders, c.ReqBody, c.RespHeaders, c.RespBody, c.Stream, c.ChunkCount,
 		c.PromptTokens, c.CompletionTokens, c.TotalTokens, c.PromptCached, c.CostCNY, c.CostPoints, c.Error,
 		c.StartedAt, c.UpstreamMS, c.FirstByteMS, c.EndedAt)
@@ -129,7 +137,7 @@ type CallFilter struct {
 }
 
 const callCols = `c.id, c.virtual_key_id, vk.key, u.name, k.label,
-	c.method, c.path, c.upstream_url, c.model, c.status_code, c.req_headers, c.req_body, c.resp_headers, c.resp_body,
+	c.method, c.path, c.upstream_url, c.session_id, c.client, c.turn_id, c.last_msg_role, c.model, c.status_code, c.req_headers, c.req_body, c.resp_headers, c.resp_body,
 	c.stream, c.chunk_count, c.prompt_tokens, c.completion_tokens, c.total_tokens, c.prompt_cached_tokens,
 	c.cost_cny, c.cost_points, c.error,
 	c.started_at, c.upstream_ms, c.first_byte_ms, c.ended_at, COALESCE(c.ended_at,0) - c.started_at`
@@ -137,7 +145,7 @@ const callCols = `c.id, c.virtual_key_id, vk.key, u.name, k.label,
 func scanCall(row interface{ Scan(...any) error }) (*Call, error) {
 	c := &Call{}
 	err := row.Scan(&c.ID, &c.VirtualKeyID, &c.VirtualKey, &c.UpstreamName, &c.UpstreamKeyLabel,
-		&c.Method, &c.Path, &c.UpstreamURL, &c.Model, &c.StatusCode, &c.ReqHeaders, &c.ReqBody, &c.RespHeaders, &c.RespBody,
+		&c.Method, &c.Path, &c.UpstreamURL, &c.SessionID, &c.Client, &c.TurnID, &c.LastMsgRole, &c.Model, &c.StatusCode, &c.ReqHeaders, &c.ReqBody, &c.RespHeaders, &c.RespBody,
 		&c.Stream, &c.ChunkCount, &c.PromptTokens, &c.CompletionTokens, &c.TotalTokens, &c.PromptCached,
 		&c.CostCNY, &c.CostPoints, &c.Error,
 		&c.StartedAt, &c.UpstreamMS, &c.FirstByteMS, &c.EndedAt, &c.DurationMS)
@@ -201,6 +209,88 @@ func (s *Store) ListCalls(f CallFilter) ([]Call, error) {
 		out = append(out, *c)
 	}
 	return out, rows.Err()
+}
+
+// CallSession 会话分组的调用列表：会话级分页的返回单元。
+type CallSession struct {
+	SessionID string `json:"session_id"`
+	Client    string `json:"client"`
+	Calls     []Call `json:"calls"`
+}
+
+// ListCallSessions 按 session 分组、组内最新时间倒序分页，返回页数据与会话总数；
+// 会话内请求全量返回（单会话量级可控，配合前端 turn 折叠展示）。
+func (s *Store) ListCallSessions(vkeyID int64, limit, offset int) ([]CallSession, int, error) {
+	if limit <= 0 || limit > 20 {
+		limit = 5
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(DISTINCT session_id) FROM calls WHERE virtual_key_id = ?`, vkeyID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.Query(`SELECT session_id FROM calls WHERE virtual_key_id = ?
+		GROUP BY session_id ORDER BY MAX(started_at) DESC LIMIT ? OFFSET ?`, vkeyID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, 0, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if len(ids) == 0 {
+		return nil, total, nil
+	}
+	// 页内会话的请求全量：IN 逐会话聚合，保持分组顺序
+	ph := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, vkeyID)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	crows, err := s.db.Query(`SELECT `+callCols+` FROM calls c
+		LEFT JOIN virtual_keys vk ON vk.id = c.virtual_key_id
+		LEFT JOIN upstreams u ON u.id = c.upstream_id
+		LEFT JOIN upstream_keys k ON k.id = c.upstream_key_id
+		WHERE c.virtual_key_id = ? AND c.session_id IN (`+ph+`) ORDER BY c.started_at DESC`, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer crows.Close()
+	byID := make(map[string]*CallSession, len(ids))
+	order := make([]CallSession, 0, len(ids))
+	ptrs := make([]*CallSession, 0, len(ids))
+	for _, id := range ids {
+		cs := &CallSession{SessionID: id}
+		byID[id] = cs
+		ptrs = append(ptrs, cs)
+	}
+	for crows.Next() {
+		c, err := scanCall(crows)
+		if err != nil {
+			return nil, 0, err
+		}
+		c.ReqBody, c.RespBody, c.ReqHeaders, c.RespHeaders = "", "", "", ""
+		cs := byID[c.SessionID]
+		if cs.Client == "" {
+			cs.Client = c.Client
+		}
+		cs.Calls = append(cs.Calls, *c)
+	}
+	for _, p := range ptrs {
+		order = append(order, *p)
+	}
+	return order, total, crows.Err()
 }
 
 // GetCall 单条详情（含完整请求/响应）。

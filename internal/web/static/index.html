@@ -113,6 +113,8 @@
   .msg { background:var(--bg); border-left:3px solid var(--dim); border-radius:4px; margin:4px 0; }
   .msg.role-user { border-left-color:#4caf7d; } .msg.role-assistant { border-left-color:#4f8cff; }
   .msg.role-system { border-left-color:#e0a83c; } .msg.role-tool { border-left-color:#a78bfa; }
+  .msg.role-tool_call { border-left-color:#5f7fd0; } .msg.role-reasoning { border-left-color:#6a9ab8; }
+  .msg.role-other { border-left-color:#888; }
   .msg-hdr { display:flex; align-items:center; gap:8px; padding:5px 8px; cursor:pointer; }
   .role { font-size:11px; padding:1px 8px; border-radius:3px; font-family:ui-monospace,monospace; background:var(--line); }
   .role-instructions, .role-developer { background:#3d3a1d; color:#e8e0a8; }
@@ -120,10 +122,16 @@
   /* role 标签适配双主题：深色系原值，浅色主题覆盖为浅底深字 */
   .role-user { background:#1d3a2a; color:#8fe0b0; } .role-assistant { background:#1d2c4a; color:#a8c8ff; }
   .role-system { background:#3d3a1d; color:#e8e0a8; } .role-tool { background:#3a2a3d; color:#e0b8e8; }
+  /* tool_call=工具调用（与结果 role-tool 区分），reasoning=历史思考，other=未知类型占位 */
+  .role-tool_call { background:#22224a; color:#b0b0ff; } .role-reasoning { background:#1a2e38; color:#a0d0e0; }
+  .role-other { background:#2a2a2a; color:#aaaaaa; }
   :root[data-theme="light"] .role-user { background:#e2f3e9; color:#1c7a45; }
   :root[data-theme="light"] .role-assistant { background:#e3ecfb; color:#2358c4; }
   :root[data-theme="light"] .role-system { background:#f6eecb; color:#8a6d14; }
   :root[data-theme="light"] .role-tool { background:#f0e4f4; color:#7b4a8a; }
+  :root[data-theme="light"] .role-tool_call { background:#e8e8fb; color:#5555cc; }
+  :root[data-theme="light"] .role-reasoning { background:#e2f0f6; color:#2a6a80; }
+  :root[data-theme="light"] .role-other { background:#eeeeee; color:#666666; }
   .msg-preview { color:var(--dim); font-size:11px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .msg-body { padding:2px 8px 6px; }
   /* SSE 行 */
@@ -141,6 +149,23 @@
   /* 横排时间轴行 */
   .wf-group { border:1px solid var(--line); border-radius:8px; margin:10px 0; overflow:hidden; }
   .wf-group-hdr { display:flex; gap:10px; padding:5px 10px; background:var(--bg); font-size:11px; color:var(--dim); font-family:ui-monospace,monospace; }
+  /* 会话分组两层结构：session 外层容器（主标题）+ turn 内层 wf-group（细分段） */
+  /* overflow 不能为 hidden：sticky 头在 hidden 滚动容器内会失效（圆角交给子元素自带） */
+  .wf-sess { border:1px solid var(--line); border-radius:10px; margin:14px 0; }
+  /* 会话/轮次头吸顶：turn 展开后内容很长，滚动时头部保持可见、随时可点收起 */
+  .wf-sess-hdr { display:flex; gap:12px; padding:8px 12px; font-size:13px; font-weight:600; border-bottom:1px solid var(--line); background:var(--bg); cursor:pointer; user-select:none; position:sticky; top:0; z-index:6; }
+  .wf-sess-hdr span:not(:first-child) { color:var(--dim); font-weight:400; font-size:11px; font-family:ui-monospace,monospace; }
+  .wf-sess .wf-group { margin:0; border:none; border-radius:0; border-bottom:1px dashed var(--line); overflow:visible; } /* 覆盖基类 hidden：否则 turn 头 sticky 失效 */
+  .wf-sess .wf-group:last-child { border-bottom:none; }
+  .wf-group-hdr { background:var(--bg); }
+  .wf-sess .wf-group-hdr { position:sticky; top:var(--sess-hdr-h, 38px); z-index:5; } /* 紧贴吸顶会话头的底边，高度由渲染后实测写入变量 */
+  /* 分页新增分组的标记：橙色徽章 + 会话容器描边，下次加载更多时自然消失 */
+  .new-flag { display:inline-block; font-size:10px; padding:0 5px; border-radius:3px; background:#7a4a1a; color:#ffd9a0; font-weight:600; }
+  :root[data-theme="light"] .new-flag { background:#fdf0dd; color:#a05a10; }
+  .wf-sess.has-new { border-color:#a06a20; }
+  /* 本次拉取新增的日志行：左侧橙色竖条 + 微底色，与「新」徽章同一色系 */
+  .wf-row.row-new { background:rgba(224,150,60,.07); box-shadow:inset 3px 0 0 #b06a20; }
+  :root[data-theme="light"] .wf-row.row-new { background:#fdf6ea; }
   .wf-row { display:flex; gap:10px; align-items:center; padding:10px; border-top:1px solid var(--line); cursor:pointer; }
   .wf-row:hover { background:var(--bg); }
   .wf-row.active { background:var(--bg); outline:1px solid var(--accent); }
@@ -154,13 +179,18 @@
   .wf-row-main { flex:1; min-width:0; display:flex; flex-direction:column; }
   /* viewer 式：lane 下方直接展示 timing 与 token 明细 */
   /* viewer 式小字：9px 等宽，紧凑不重叠 */
-  .wf-timing { color:var(--dim); font-size:9px; line-height:14px; font-family:ui-monospace,monospace; margin-top:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } /* 文字下移半行，与进度条留呼吸空间 */
+  .wf-timing { color:var(--dim); font-size:9px; line-height:14px; font-family:ui-monospace,monospace; margin-top:12px;
+    display:grid; grid-template-columns:12ch 17ch 18ch 15ch 12ch 13ch 12ch; column-gap:6px; } /* 定宽列：跨行同列对齐 */
+  .wf-timing > span { white-space:nowrap; overflow:hidden; }
   .wf-timing b { color:var(--text); font-weight:700; }
   .wf-token { color:var(--dim); font-size:9px; line-height:14px; font-family:ui-monospace,monospace; white-space:normal; }
+  /* 耗时/Token 数值统一：数值加粗 + 等宽数字，上下行可对齐对照 */
+  .wf-timing, .wf-token { font-variant-numeric: tabular-nums; }
   .wf-token b { color:var(--text); font-weight:700; }
   .wf-token .cache-rate { color:var(--accent); }
-  .wf-token .tok-line { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:5px; }
-  .wf-token .tok-nested { padding-left:12px; }
+  .wf-token .tok-line { display:grid; grid-template-columns:6ch 22ch 26ch 21ch auto; column-gap:5px; align-items:baseline; }
+  .wf-token .tok-line > span { white-space:nowrap; overflow:hidden; }
+  .wf-token .tok-nested { display:flex; padding-left:12px; } /* 嵌套行长标签不参与列对齐 */
   /* 小时柱状图：本期(accent) vs 上周同期(line)，双条并列 */
   .st-chart { display:flex; align-items:flex-end; gap:2px; padding:4px 0 0; overflow-x:auto; border-bottom:1px solid var(--line); }
   .st-chart .col { display:flex; flex-direction:column; align-items:center; flex:1; min-width:16px; }
@@ -345,14 +375,21 @@
       <button class="small" onclick="go('#/stats')">← 返回统计</button>
       <h2 class="page" style="margin:0">请求日志</h2>
       <span class="muted" id="klog-sub"></span>
-      <span style="flex:1"></span>
+      <!-- 操作控件放左侧：右侧详情抽屉（52vw）弹出时不遮挡，便于边看边切分组/间隔 -->
+      <label>分组</label>
+      <div class="seg" id="klog-mode">
+        <button data-v="time">时间</button><button data-v="session">会话</button>
+      </div>
+      <span id="klog-gap-wrap">
       <label>分段间隔</label>
       <div class="seg" id="klog-gap">
         <button data-v="60">1 分</button><button data-v="120">2 分</button>
         <button data-v="300" class="on">5 分</button><button data-v="600">10 分</button>
         <button data-v="1800">30 分</button>
       </div>
+      </span>
       <label><input type="checkbox" id="klog-live" checked onchange="klogToggleLive()"> 实时监听</label>
+      <span style="flex:1"></span>
       <span class="muted" id="klog-ws">未连接</span>
     </div>
     <div class="wf-legend">
@@ -1146,6 +1183,60 @@ document.querySelectorAll('#klog-gap button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#klog-gap button').forEach(x=>x.classList.toggle('on', x===b));
   klogRender();
 });
+// 分组模式：时间（按间隔切段）/ 会话（按客户端 Session-Id 聚合，如 Codex）
+let klogMode = localStorage.getItem('mg-klog-mode') || 'time';
+function klogModeApply(){
+  document.querySelectorAll('#klog-mode button').forEach(x=>x.classList.toggle('on', x.dataset.v===klogMode));
+  $('klog-gap-wrap').style.display = klogMode==='session' ? 'none' : '';
+}
+document.querySelectorAll('#klog-mode button').forEach(b => b.onclick = () => {
+  klogMode = b.dataset.v;
+  localStorage.setItem('mg-klog-mode', klogMode);
+  klogModeApply(); klogLoad();
+});
+klogModeApply();
+// 会话模式：请求级分页（控制首屏量）+ 会话/turn 分组填充；key：s:<sid> / t:<sid>/<tid>
+let klogSessCalls = [], klogHasMore = true, klogNewKeys = new Set(), klogNewCallIds = new Set();
+const SESS_PAGE = 50;
+let klogOpen = new Set(JSON.parse(localStorage.getItem('mg-klog-open')||'[]'));
+let klogOpenInit = localStorage.getItem('mg-klog-open') !== null;
+function klogOpenSave(){ localStorage.setItem('mg-klog-open', JSON.stringify([...klogOpen])); }
+function klogToggle(key){ klogOpen.has(key) ? klogOpen.delete(key) : klogOpen.add(key); klogOpenSave(); klogRender(); }
+function klogExpandAll(open){
+  klogOpen = new Set();
+  if (open) for (const k of sessGroupKeys(klogSessCalls)) klogOpen.add(k);
+  klogOpenSave(); klogRender();
+}
+// 全量分组 key 集合（session + turn）
+function sessGroupKeys(calls){
+  const keys = new Set();
+  for (const c of calls){
+    keys.add('s:'+(c.session_id||''));
+    keys.add('t:'+(c.session_id||'')+'/'+(c.turn_id||''));
+  }
+  return keys;
+}
+async function klogLoadSess(append){
+  const d = (await api('/api/calls?limit='+SESS_PAGE+'&offset='+(append?klogSessCalls.length:0)+'&virtual_key_id='+route.id)) || [];
+  if (!append){ klogSessCalls = []; klogNewKeys = new Set(); klogNewCallIds = new Set(); klogHasMore = true; }
+  if (d.length < SESS_PAGE) klogHasMore = false;
+  // 分页新增标记：以「本次新增的日志条目」为准（同 turn 跨分页边界时分组 key 不变，
+  // 但条目是新的，分组头也须亮标）；key 差集用于分组级徽章
+  const before = append ? sessGroupKeys(klogSessCalls) : new Set();
+  if (append) klogNewCallIds = new Set(d.map(c=>c.id));
+  klogSessCalls = klogSessCalls.concat(d);
+  if (append) klogNewKeys = new Set([...sessGroupKeys(klogSessCalls)].filter(k=>!before.has(k)));
+  if (!klogOpenInit && klogSessCalls.length){
+    // 首次默认：最新会话 + 其最新轮次展开，其余折叠
+    klogOpen = new Set();
+    const sid = klogSessCalls[0].session_id||'';
+    klogOpen.add('s:'+sid);
+    klogOpen.add('t:'+sid+'/'+(klogSessCalls[0].turn_id||''));
+    klogOpenSave(); klogOpenInit = true;
+  }
+  klogRender();
+}
+function klogSessMore(){ klogLoadSess(true); }
 async function renderLogs(){
   if (!route.id){ go('#/stats'); return; } // 无 id 的日志入口已并入统计页
   const vks = (await api('/api/virtual-keys'))||[];
@@ -1168,84 +1259,169 @@ function klogToggleLive(){
   klogWS.onclose = ()=>{ if (klogWS===ws){ klogWS=null; const el=$('klog-ws'); if(el) el.textContent='未连接'; } };
   klogWS.onmessage = ev=>{
     const m = JSON.parse(ev.data);
-    if (m.type==='call_start'){ klogLiveItems.add((m.body.model||'')+' '+(m.body.path||'')); klogRender(); }
+    if (m.type==='call_start'){ klogLiveItems.add((m.body.model||'')+' '+(m.body.session_id ? m.body.session_id.slice(0,8) : (m.body.path||''))); klogRender(); }
     if (m.type==='call_end'){ klogLiveItems.clear(); klogLoad(); }
   };
 }
 async function klogLoad(){
+  if (klogMode === 'session'){ await klogLoadSess(false); return; }
   klogCalls = (await api('/api/calls?limit=500&virtual_key_id='+route.id)) || [];
   klogRender();
 }
 function klogMore(){ klogLimit = Math.min(klogLimit + KLOG_PAGE, KLOG_MAX); klogRender(); }
+// 会话可跨天：非当天的时间补「M/D」前缀，避免起止看起来倒挂
+function fmtDayMS(t){ const d=new Date(t);
+  return d.toDateString()===new Date().toDateString() ? fmtMS(t) : (d.getMonth()+1)+'/'+d.getDate()+' '+fmtMS(t).slice(0,5); }
+// 进行中对话的置顶行（两种分组模式共用）
+function klogLiveRows(){
+  return [...klogLiveItems].map(k=>{
+    const parts=k.split(' ');
+    return '<div class="wf-row" style="cursor:default"><div class="wf-row-meta"><span class="live-dot"></span><b>'+esc(parts[0]||'…')+'</b><span class="wf-badges"><span class="badge err">正在对话</span></span></div><div class="wf-row-lane"></div><div class="wf-row-extra"><div>进行中…</div></div></div>';
+  }).join('');
+}
+// 段主体（请求行 + 刻度）：time 模式的间隔段与会话模式的 turn 段共用
+function klogSegBody(g, gStart, globalMax, markNew){
+  const gEnd = Math.max(...g.map(x=>x.started_at+Math.max(x.duration_ms||0,1)));
+  // 相邻请求间隔：本请求 start − 上一请求 end（负数=重叠），viewer 的「间隔时间」口径
+  const asc = g.slice().sort((a,b)=>a.started_at-b.started_at);
+  const gapOf = {}; let prevEnd = null;
+  asc.forEach(x=>{ if (prevEnd!=null) gapOf[x.id] = x.started_at - prevEnd; prevEnd = x.started_at + Math.max(x.duration_ms||0,1); });
+    const rows = g.map(c=>{
+    const total = Math.max(c.duration_ms||0,1);
+    const left = (c.started_at - gStart) / globalMax * 100;
+    const width = Math.max(total / globalMax * 100, 0.4);
+    const fb = Math.min(c.first_byte_ms ?? total, total);
+    const seg = (w, cls) => w>0 ? '<i class="'+cls+'" style="width:'+(w/total*100).toFixed(1)+'%"></i>' : '';
+      return '<div class="wf-row'+(markNew && markNew.has(c.id) ? ' row-new' : '')+'" data-gstart="'+gStart+'" data-gap="'+(gapOf[c.id]??'')+'" onclick="klogDetail('+c.id+')">'+
+      '<div class="wf-row-meta"><span>'+fmtMS(c.started_at)+'</span><b>'+esc(c.model||'(未知)')+'</b>'+
+      (c.last_msg_role?'<span class="role role-'+esc(c.last_msg_role.replace(/[^a-z0-9_]/gi,''))+'" title="末条消息类型">'+esc(c.last_msg_role)+'</span>':'')+
+      '<span class="wf-badges"><span class="badge '+(c.error||((c.status_code??500)>=400)?'err':'ok')+'">'+(c.status_code??'…')+'</span>'+
+      (c.stream?'<span class="badge">SSE</span>':'')+'</span></div>'+
+      '<div class="wf-row-main">'+
+      '<div class="wf-row-lane" id="lane-'+c.id+'">'+
+      '<span class="wf-bar" style="left:'+left.toFixed(2)+'%;width:'+width.toFixed(2)+'%">'+seg(fb,'ph-first')+seg(total-fb,'ph-out')+'</span></div>'+
+      '<div class="wf-timing" id="timing-'+c.id+'">'+
+      '<span>'+(gapOf[c.id]!=null?'Gap <b>'+fmtDur(gapOf[c.id])+'</b>':'')+'</span>'+
+      '<span>Start +<b>'+fmtDur(c.started_at-gStart)+'</b></span>'+
+      '<span>First token <b>'+fmtDur(c.first_byte_ms)+'</b></span>'+
+      '<span>Thinking -</span><span>Output -</span><span>Toolcall -</span>'+
+      '<span>Total <b>'+fmtDur(total)+'</b></span></div>'+
+      '<div class="wf-token" id="token-'+c.id+'">'+wfTokenHTML(c)+'</div></div></div>';
+  }).join('');
+  const scaleHTML = '<div class="wf-scale"><span>'+fmtMS(gStart)+'</span><span></span><span>'+fmtMS(gEnd)+'</span></div>';
+  return {rows, scaleHTML, gEnd};
+}
 // 渲染：按间隔分段；全局以最大分段跨度为 100%，其他分段等比例缩放
 function klogRender(){
+  if (klogMode === 'session'){ klogRenderSess(); return; }
   const shown = klogCalls.slice(0, klogLimit).slice().sort((a,b)=>b.started_at-a.started_at); // 时间倒序：最新在前，实时对话置顶
   const gapMS = klogGap * 1000;
-  // 分段：相邻调用间隔 > gapMS 则切开
-  const groups = [];
+  // 时间模式：相邻调用间隔 > gapMS 切段
+  const segments = [];
   let cur = [];
   for (const c of shown){
     if (cur.length){
       const prev = cur[cur.length-1];
-      if (Math.abs(c.started_at - (prev.started_at + Math.max(prev.duration_ms||0,1))) > gapMS){ groups.push(cur); cur=[]; }
+      if (Math.abs(c.started_at - (prev.started_at + Math.max(prev.duration_ms||0,1))) > gapMS){ segments.push(cur); cur=[]; }
     }
     cur.push(c);
   }
-  if (cur.length) groups.push(cur);
+  if (cur.length) segments.push(cur);
   // 列表按时间倒序，但分段起止与跨度按真实时间 min/max 计算，全局比例基准 = 最大分段跨度
   const gSpan = g => Math.max(...g.map(x=>x.started_at+Math.max(x.duration_ms||0,1))) - Math.min(...g.map(x=>x.started_at));
-  const spans = groups.map(gSpan);
+  const spans = segments.map(gSpan);
   const globalMax = Math.max(...spans, 1);
-  const liveArr = [...klogLiveItems];
-  const liveRow = liveArr.map(k=>{
-    const parts=k.split(' ');
-    return '<div class="wf-row" style="cursor:default"><div class="wf-row-meta"><span class="live-dot"></span><b>'+esc(parts[0]||'…')+'</b><span class="wf-badges"><span class="badge err">正在对话</span></span></div><div class="wf-row-lane"></div><div class="wf-row-extra"><div>进行中…</div></div></div>';
-  }).join('');
-  const html = groups.map((g, gi)=>{
+  const liveRow = klogLiveRows();
+  const renderSeg = (g, gi)=>{
     const gStart = Math.min(...g.map(x=>x.started_at));
-    const gEnd = gStart + gSpan(g);
-    const scale = spans[gi] / globalMax;   // 该分段相对全局的宽度占比
-    // 相邻请求间隔：本请求 start − 上一请求 end（负数=重叠），viewer 的「间隔时间」口径
-    const asc = g.slice().sort((a,b)=>a.started_at-b.started_at);
-    const gapOf = {}; let prevEnd = null;
-    asc.forEach(x=>{ if (prevEnd!=null) gapOf[x.id] = x.started_at - prevEnd; prevEnd = x.started_at + Math.max(x.duration_ms||0,1); });
-    const rows = g.map(c=>{
-      const total = Math.max(c.duration_ms||0,1);
-      const left = (c.started_at - gStart) / globalMax * 100;
-      const width = Math.max(total / globalMax * 100, 0.4);
-      const fb = Math.min(c.first_byte_ms ?? total, total);
-      const seg = (w, cls) => w>0 ? '<i class="'+cls+'" style="width:'+(w/total*100).toFixed(1)+'%"></i>' : '';
-      return '<div class="wf-row" data-gstart="'+gStart+'" data-gap="'+(gapOf[c.id]??'')+'" onclick="klogDetail('+c.id+')">'+
-        '<div class="wf-row-meta"><span>'+fmtMS(c.started_at)+'</span><b>'+esc(c.model||'(未知)')+'</b>'+
-        '<span class="wf-badges"><span class="badge '+(c.error||((c.status_code??500)>=400)?'err':'ok')+'">'+(c.status_code??'…')+'</span>'+
-        (c.stream?'<span class="badge">SSE</span>':'')+'</span></div>'+
-        '<div class="wf-row-main">'+
-        '<div class="wf-row-lane" id="lane-'+c.id+'">'+
-        '<span class="wf-bar" style="left:'+left.toFixed(2)+'%;width:'+width.toFixed(2)+'%">'+seg(fb,'ph-first')+seg(total-fb,'ph-out')+'</span></div>'+
-        '<div class="wf-timing" id="timing-'+c.id+'">'+(gapOf[c.id]!=null?'<b>Gap</b> '+fmtDur(gapOf[c.id])+' · ':'')+'<b>Start</b> +'+fmtDur(c.started_at-gStart)+' · <b>First token</b> '+fmtDur(c.first_byte_ms)+' · <b>Total</b> '+fmtDur(total)+'</div>'+
-        '<div class="wf-token" id="token-'+c.id+'">'+wfTokenHTML(c)+'</div></div></div>';
-    }).join('');
-    return '<div class="wf-group"><div class="wf-group-hdr"><span>'+fmtMS(gStart)+' → '+fmtMS(gEnd)+'</span><span>'+g.length+' 次调用</span></div>'+rows+
-      '<div class="wf-scale"><span>'+fmtMS(gStart)+'</span><span></span><span>'+fmtMS(gEnd)+'</span></div></div>';
-  }).join('');
+    const body = klogSegBody(g, gStart, globalMax);
+    const gEnd = body.gEnd;
+    const hdr = '<span>'+fmtMS(gStart)+' → '+fmtMS(gEnd)+'</span><span>'+g.length+' 次调用</span>';
+    return '<div class="wf-group"><div class="wf-group-hdr">'+hdr+'</div>'+body.rows+body.scaleHTML+'</div>';
+  };
+  const html = segments.map((g, gi)=>renderSeg(g, gi)).join('');
   $('klog-rows').innerHTML = liveRow + html + '<div class="row"><button class="small" id="klog-more" onclick="klogMore()">加载更多</button><span class="hint" id="klog-pageinfo">显示 '+shown.length+'/'+klogCalls.length+' 条</span></div>';
   const more=$('klog-more'); if(more) more.style.display = klogLimit < klogCalls.length ? '' : 'none';
   klogUpgradePhases(shown);
+}
+// 会话模式渲染：折叠树（session → turn → 请求行）。
+// 数据来自后端会话级分页；turn 层是可选层——客户端提供轮次头（Codex）才展示，
+// 单段（如 dsh 无 turn）自动省略 turn 头，退化为 session → 行。
+function klogRenderSess(){
+  const liveRow = klogLiveRows();
+  const span = tc => Math.max(...tc.map(x=>x.started_at+Math.max(x.duration_ms||0,1))) - Math.min(...tc.map(x=>x.started_at));
+  // 请求级分页数据按 session/turn 分组填充：倒序列表 → 最新会话/轮次在前，未标记置底。
+  // 分页数据不全时不展示轮次总数（不准确的汇总不说）
+  const bySess = new Map();
+  for (const c of klogSessCalls){
+    const key = c.session_id || '';
+    if (!bySess.has(key)) bySess.set(key, []);
+    bySess.get(key).push(c);
+  }
+  const entries = [...bySess.entries()].filter(([k])=>k);
+  if (bySess.has('')) entries.push(['', bySess.get('')]);
+  const blocks = entries.map(([sid, calls])=>{
+    const byTurn = new Map();
+    for (const c of calls){ const t=c.turn_id||''; if(!byTurn.has(t)) byTurn.set(t,[]); byTurn.get(t).push(c); }
+    const turns = [...byTurn.entries()].map(([tid,tc])=>({tid, calls:tc})); // 倒序列表 → 首 turn 最新
+    const first = calls.length ? Math.min(...calls.map(x=>x.started_at)) : 0;
+    const last = calls.length ? Math.max(...calls.map(x=>x.started_at+Math.max(x.duration_ms||0,1))) : 0;
+    return {sid, client: (calls[0]&&calls[0].client) || '', turns, n: calls.length, first, last};
+  });
+  // 时间线基准：页内最大 turn 跨度（同一 turn 连续，跨天会话不拉爆）
+  const globalMax = Math.max(1, ...blocks.flatMap(b=>b.turns.map(t=>span(t.calls))));
+  const html = blocks.map(b=>{
+    // 新增标记以「本次拉取新增的条目」为准：会话/轮次内含新增条目即亮标
+    // （同 turn 跨分页边界时 key 不变但条目是新的，也须可见）
+    const skey = 's:'+b.sid, openS = klogOpen.has(skey);
+    const isNewS = b.turns.some(t=>t.calls.some(c=>klogNewCallIds.has(c.id)));
+    // 仅「无轮次数据」（dsh 等）才省略 turn 头；真实单 turn 仍显示头、可单独折叠
+    const single = b.turns.length===1 && !b.turns[0].tid;
+    const turnsHTML = b.turns.map(t=>{
+      const tkey = 't:'+b.sid+'/'+t.tid, openT = klogOpen.has(tkey);
+      const isNewT = t.calls.some(c=>klogNewCallIds.has(c.id));
+      const gStart = Math.min(...t.calls.map(x=>x.started_at));
+      const gEnd = Math.max(...t.calls.map(x=>x.started_at+Math.max(x.duration_ms||0,1)));
+      const thdr = '<div class="wf-group-hdr" style="cursor:pointer" onclick="klogToggle(this.dataset.k)" data-k="'+esc(tkey)+'">'+
+        '<span>'+(openT?'▾':'▸')+' turn '+esc(t.tid ? t.tid.slice(0,8) : '未分轮')+'</span>'+
+        '<span>'+fmtDayMS(gStart)+' → '+fmtDayMS(gEnd)+'</span><span>'+t.calls.length+' 次调用'+(isNewT&&!single?' <span class="new-flag">新</span>':'')+'</span></div>';
+      if (!openT) return '<div class="wf-group">'+thdr+'</div>'; // 折叠只剩头
+      const body = klogSegBody(t.calls, gStart, globalMax, klogNewCallIds);
+      return '<div class="wf-group">'+(single?'':thdr)+body.rows+body.scaleHTML+'</div>';
+    }).join('');
+    return '<div class="wf-sess'+(isNewS?' has-new':'')+'"><div class="wf-sess-hdr" onclick="klogToggle(this.dataset.k)" data-k="'+esc(skey)+'">'+
+      '<span>'+(openS?'▾':'▸')+' '+(b.sid ? esc(b.sid.slice(0,8))+' · '+esc(b.client||'未知客户端') : '未标记')+'</span>'+
+      '<span>'+fmtDayMS(b.first)+' → '+fmtDayMS(b.last)+'</span>'+
+      '<span>'+b.n+' 次调用'+(isNewS?' <span class="new-flag">新</span>':'')+'</span></div>'+
+      (openS ? turnsHTML : '')+'</div>';
+  }).join('');
+  const tools = klogSessCalls.length ? '<div class="row" style="margin:6px 0"><button class="small" onclick="klogExpandAll(true)">全部展开</button> <button class="small" onclick="klogExpandAll(false)">全部收起</button></div>' : '';
+  const more = klogHasMore
+    ? '<div class="row"><button class="small" id="klog-more" onclick="klogSessMore()">加载更多</button><span class="hint">已载 '+klogSessCalls.length+' 条请求'+(klogNewCallIds.size?' · 本次新增已标「新」':'')+'</span></div>'
+    : (klogSessCalls.length ? '<div class="row"><span class="hint">已全部加载（'+klogSessCalls.length+' 条）</span></div>' : '');
+  $('klog-rows').innerHTML = liveRow + tools + html + more;
+  // turn 头吸顶位置 = 会话头实际高度（字号/主题变化时不再错位遮挡请求行）
+  const shEl = document.querySelector('.wf-sess-hdr');
+  if (shEl) document.documentElement.style.setProperty('--sess-hdr-h', Math.ceil(shEl.getBoundingClientRect().height)+'px');
+  // 只对展开可见的请求做阶段升级（拉分包开销大，折叠的不处理）；结果有缓存不重复拉
+  klogUpgradePhases(blocks.flatMap(b=>klogOpen.has('s:'+b.sid)
+    ? b.turns.filter(t=>(b.turns.length===1 && !b.turns[0].tid) || klogOpen.has('t:'+b.sid+'/'+t.tid)).flatMap(t=>t.calls)
+    : []));
 }
 // viewer 式 token 行：prompt/completion/total + 缓存命中率
 const fmtTok = n => n==null ? '-' : Number(n).toLocaleString('en-US');
 function wfTokenHTML(c){
   if (c.total_tokens==null && c.prompt_tokens==null && c.completion_tokens==null) return '';
-  let html = '<div class="tok-line"><b>Token</b><span>prompt_tokens <b>'+fmtTok(c.prompt_tokens)+'</b></span><span>completion_tokens <b>'+fmtTok(c.completion_tokens)+'</b></span><span>total_tokens <b>'+fmtTok(c.total_tokens)+'</b></span>';
-  const cached = c.prompt_cached_tokens;
-  if (cached>0 && c.prompt_tokens>0){
+  let html = '<div class="tok-line">Token<span>prompt_tokens <b>'+fmtTok(c.prompt_tokens)+'</b></span><span>completion_tokens <b>'+fmtTok(c.completion_tokens)+'</b></span><span>total_tokens <b>'+fmtTok(c.total_tokens)+'</b></span>';
+  const cached = c.prompt_cached_tokens || 0; // 无缓存数据按 0 展示，保持各行结构一致可对照
+  if (c.prompt_tokens>0){
     const rate = Math.min(cached/c.prompt_tokens,1);
     // viewer 同款：mini 进度条 + 百分比，颜色随命中率变化
     const pct=(rate*100).toFixed(2), color = rate>=.8?'#4ec9b0':rate>=.5?'#569cd6':rate>=.2?'#dcdcaa':'#ce9178';
     html += '<span class="cache-rate" title="缓存命中 '+fmtTok(cached)+' / '+fmtTok(c.prompt_tokens)+'">Cache <span class="cache-bar"><i style="width:'+pct+'%;background:'+color+'"></i></span> '+pct+'%</span>';
   }
   html += '</div>';
-  if (cached>0 && c.prompt_tokens>0){
+  if (c.prompt_tokens>0){
     html += '<div class="tok-line tok-nested">↳<span>prompt_tokens_details.cached_tokens <b>'+fmtTok(cached)+'</b></span></div>';
   }
   return html;
@@ -1271,12 +1447,39 @@ function klogChunkType(data){
   return kind;
 }
 // 对流式行拉取分包并升级条形图与文字为四阶段
+// 阶段分析缓存：callId → {first, think, out, tool}；避免折叠/展开等重渲染重复拉全量分包
+const klogPhaseCache = new Map();
+function klogPhaseApply(c){
+  const p = klogPhaseCache.get(c.id);
+  const total = Math.max(c.duration_ms||0,1);
+  const seg = (w,cls) => w>0 ? '<i class="'+cls+'" style="width:'+Math.max(w/total*100,1)+'%"></i>' : '';
+  const lane = $('lane-'+c.id), timing = $('timing-'+c.id);
+  if (lane && lane.querySelector('.wf-bar')) lane.querySelector('.wf-bar').innerHTML = seg(p.first,'ph-first')+seg(p.think,'ph-think')+seg(p.out,'ph-out')+seg(p.tool,'ph-tool');
+  if (timing){
+    const row = lane.closest('.wf-row');
+    const gStart = +(row.dataset.gstart||0);
+    const gapRaw = row.dataset.gap;
+    const parts = [(gapRaw!==''&&gapRaw!=null?'Gap <b>'+fmtDur(+gapRaw)+'</b>':''),
+      'Start +<b>'+fmtDur(c.started_at-gStart)+'</b>',
+      'First token <b>'+fmtDur(p.first)+'</b>',
+      'Thinking '+(p.think?'<b>'+fmtDur(p.think)+'</b>':'-'),
+      'Output '+(p.out?'<b>'+fmtDur(p.out)+'</b>':'-'),
+      'Toolcall '+(p.tool?'<b>'+fmtDur(p.tool)+'</b>':'-'),
+      'Total <b>'+fmtDur(total)+'</b>'];
+    timing.innerHTML = parts.map(x=>'<span>'+x+'</span>').join('');
+  }
+}
 async function klogUpgradePhases(shown){
+  // 已缓存的先同步回填；未缓存的小批量并发拉取，长会话展开不必逐条串行等待
+  const todo = [];
   for (const c of shown){
     if (!c.stream || !c.chunk_count) continue;
-    let chunks; try{ chunks = (await api('/api/calls/'+c.id+'/chunks')) || []; }catch{ continue; }
+    if (klogPhaseCache.has(c.id)) klogPhaseApply(c); else todo.push(c);
+  }
+  const load = async c=>{
+    let chunks; try{ chunks = (await api('/api/calls/'+c.id+'/chunks')) || []; }catch{ return; }
     const marks = chunks.map(ch=>({t:ch.t_offset_ms, kind:klogChunkType(ch.data)})).filter(m=>m.kind!=='none');
-    if (!marks.length) continue;
+    if (!marks.length) return;
     const total = Math.max(c.duration_ms||0,1);
     const first = marks[0].t;
     // viewer 语义：阶段时长 = 该阶段从出现到下一阶段开始的区间（单包也有时长）
@@ -1285,25 +1488,11 @@ async function klogUpgradePhases(shown){
       const end = i+1<marks.length ? marks[i+1].t : Math.max(c.duration_ms||0, marks[i].t);
       phase[marks[i].kind] += Math.max(end-marks[i].t, 0);
     }
-    const think = phase.think, out = phase.out, tool = phase.tool;
-    const seg = (w,cls) => w>0 ? '<i class="'+cls+'" style="width:'+Math.max(w/total*100,1)+'%"></i>' : '';
-    const lane = $('lane-'+c.id), timing = $('timing-'+c.id);
-    if (lane) lane.querySelector('.wf-bar').innerHTML = seg(first,'ph-first')+seg(think,'ph-think')+seg(out,'ph-out')+seg(tool,'ph-tool');
-    if (timing){
-      // 与 viewer 一致：Start +x · First token · Thinking · Output · Toolcall · Total
-      const row = lane.closest('.wf-row');
-      const gStart = +(row.dataset.gstart||0);
-      const gapRaw = row.dataset.gap;
-      const parts = [(gapRaw!==''&&gapRaw!=null?'<b>Gap</b> '+fmtDur(+gapRaw):null),
-        '<b>Start</b> +'+fmtDur(c.started_at-gStart),
-        '<b>First token</b> '+fmtDur(first),
-        '<b>Thinking</b> '+(think?fmtDur(think):'-'),
-        '<b>Output</b> '+(out?fmtDur(out):'-'),
-        '<b>Toolcall</b> '+(tool?fmtDur(tool):'-'),
-        '<b>Total</b> '+fmtDur(total)];
-      timing.innerHTML = parts.filter(Boolean).join(' · ');
-    }
-  }
+    klogPhaseCache.set(c.id, {first, ...phase});
+    klogPhaseApply(c);
+  };
+  const BATCH = 8;
+  for (let i=0; i<todo.length; i+=BATCH) await Promise.all(todo.slice(i,i+BATCH).map(load));
 }
 function openDrawer(){ $('klog-drawer').classList.remove('hidden'); }
 function closeDrawer(){ $('klog-drawer').classList.add('hidden'); $('klog-drawer').classList.remove('fullscreen'); }
@@ -1342,7 +1531,7 @@ function msgHTML(m){
   if (typeof m.content === 'string') txt = m.content;
   else if (Array.isArray(m.content)) txt = m.content.map(p=>p.text ?? p.summary ?? JSON.stringify(p)).join('\n');
   else if (m.content != null) txt = JSON.stringify(m.content);
-  if (m.tool_calls) txt += (txt?'\n':'') + m.tool_calls.map(tc=>'tool_call: '+((tc.function||{}).name||'?')+' '+((tc.function||{}).arguments||'')).join('\n');
+  // tool_calls 单独在卡片底部 hint 行展示，不拼进正文（避免同卡片重复两遍）
   const preview = txt.replace(/\s+/g,' ').slice(0,90);
   let body = '<pre>'+esc(txt)+'</pre>'; // 不限高度直接平铺
   if (m.tool_calls) body += m.tool_calls.map(tc=>'<div class="hint">tool_call: '+esc((tc.function||{}).name||'?')+' '+esc((tc.function||{}).arguments||'')+'</div>').join('');
@@ -1403,6 +1592,22 @@ async function klogDetail(id){
     }
     return items;
   };
+  // Responses API typed items → 统一消息视图：全量映射分桶展示，不丢信息；
+  // 无法识别的类型以 other 占位（原样 JSON），避免静默丢弃
+  const normMsgs = (items)=>(items||[]).filter(x=>x&&typeof x==='object').map(x=>{
+    const t = String(x.type||'');
+    if (t==='function_call' || t==='custom_tool_call')
+      return {role:'tool_call', content:(x.name||'?')+' '+String(x.arguments ?? x.input ?? '')};
+    if (t.endsWith('_output'))
+      return {role:'tool', content:x.output ?? x.output_text ?? x.text ?? ''};
+    if (t==='reasoning'){
+      const sum = (x.summary||[]).map(s=>s.text||'').join('\n');
+      const con = Array.isArray(x.content) ? x.content.map(p=>p.text||'').join('\n') : (x.content||'');
+      return {role:'reasoning', content: sum || con || '（思考内容为空）'};
+    }
+    if (x.role || t==='message') return {role:x.role||'user', content:x.content ?? x.text ?? ''};
+    return {role:'other', content: '['+t+'] '+JSON.stringify(x)};
+  });
   // messages 兼容两种协议：chat-completions 的 messages / Responses API 的 input（typed items）
   let messages = body.messages||[];
   // 截断抢救：body 超归档上限被截断时 JSON.parse 失败，但 messages/input 在 body 前部，
@@ -1410,11 +1615,11 @@ async function klogDetail(id){
   if (!Object.keys(body).length && c.req_body){
     for (const key of ['messages','input']){
       const items = scanJSONItems(c.req_body, key);
-      if (items.length){ messages = items.filter(x=>x&&(x.type==='message'||x.role)).map(x=>({role:x.role||'user',content:x.content||x.text})); break; }
+      if (items.length){ messages = normMsgs(items); break; }
     }
   }
   if (!messages.length && Array.isArray(body.input)){
-    messages = body.input.filter(x=>x && (x.type==='message'||x.role)).map(x=>({role:x.role||'user', content:x.content||x.text}));
+    messages = normMsgs(body.input);
   }
   if (body.instructions) messages = [{role:'instructions', content:body.instructions}, ...messages];
   if (!messages.length && c.req_body){
@@ -1481,6 +1686,7 @@ async function klogDetail(id){
   $('klog-detail').innerHTML =
     '<div class="row"><b>#'+c.id+' '+esc(c.model)+'</b>'+
     '<span class="badge '+(c.error||((c.status_code??500)>=400)?'err':'ok')+'">'+(c.status_code??'失败')+(c.error?' '+esc(c.error):'')+'</span>'+
+    (c.session_id?'<span class="badge" title="'+esc(c.session_id)+'">'+esc(c.session_id.slice(0,8))+' · '+esc(c.client||'')+'</span>':'')+
     (c.cost_cny!=null?'<span class="badge">￥'+Number(c.cost_cny).toFixed(6)+'</span>':'')+'</div>'+
     '<div class="hint">'+fmtMS(c.started_at)+' ~ '+(c.ended_at?fmtMS(c.ended_at):'-')+' · total '+fmtDur(c.duration_ms)+' · upstream '+fmtDur(c.upstream_ms)+' · first_token '+fmtDur(c.first_byte_ms)+' · '+(c.total_tokens??'-')+' tokens'+(c.cost_cny==null&&c.cost_points==null?' · 未计价':'')+'</div>'+
     '<div class="row" style="margin:2px 0"><span class="hint">转发 →</span><code style="white-space:normal;word-break:break-all">'+esc(c.upstream_url||(c.upstream?c.upstream:'(未记录)'))+'</code></div>'+

@@ -108,6 +108,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"model":   model,
 		"path":    r.URL.Path,
 		"stream":  bodyIsStream(reqBody),
+		// 实时视图标注正在对话的会话（客户端识别在 rec 构造前即可用）
+		"session_id": identifyClient(r.Header).SessionID,
 	})
 
 	// 4. 构造上游请求：剥离客户端挂载前缀（/v1、/anthropic）再拼 baseURL，
@@ -157,6 +159,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		vk: vk, upstreamID: upstreamID, keyID: cfg.UpstreamKeyID,
 		method: r.Method, path: r.URL.Path, model: model,
 		upstreamURL: target,
+		session: identifyClient(r.Header),
+		lastMsgRole: lastMsgRole(reqBody),
 		reqBody: truncate(string(reqBody), maxBodyRecord), reqHeaders: reqHeadersRedacted,
 		respHeaders: redactHeaders(resp.Header),
 		startMS: startMS, upstreamMS: upstreamMS, stream: isSSE,
@@ -184,6 +188,8 @@ type callRecorder struct {
 	method     string
 	path       string
 	upstreamURL string
+	session    clientSession
+	lastMsgRole string // 请求末条消息角色（截断前的完整 body 提取）
 	model      string
 	reqBody     string
 	reqHeaders  string
@@ -353,7 +359,10 @@ func (c *callRecorder) finish(status int) {
 	costCNY, costPoints := c.computeCost()
 	nc := store.NewCall{
 		VirtualKeyID: &c.vk.ID, UpstreamID: &c.upstreamID, UpstreamKeyID: &c.keyID,
-		Method: c.method, Path: c.path, UpstreamURL: c.upstreamURL, Model: c.model, StatusCode: &status,
+		Method: c.method, Path: c.path, UpstreamURL: c.upstreamURL,
+		SessionID: c.session.SessionID, Client: c.session.Client, TurnID: c.session.TurnID,
+		LastMsgRole: c.lastMsgRole,
+		Model: c.model, StatusCode: &status,
 		ReqHeaders: c.reqHeaders, ReqBody: c.reqBody,
 		RespHeaders: c.respHeaders, RespBody: truncate(c.respBody.String(), maxBodyRecord),
 		Stream: c.stream, ChunkCount: len(c.chunks),
@@ -388,9 +397,13 @@ func (c *callRecorder) finish(status int) {
 // recordFailure 上游未响应等失败场景也要留痕。
 func (h *Handler) recordFailure(vk *store.VirtualKey, upstreamID, keyID int64, r *http.Request, model, reqBody, upstreamURL string, err error, startMS int64) {
 	end := time.Now().UnixMilli()
+	cs := identifyClient(r.Header)
 	h.store.InsertCall(store.NewCall{
 		VirtualKeyID: &vk.ID, UpstreamID: &upstreamID, UpstreamKeyID: &keyID,
-		Method: r.Method, Path: r.URL.Path, UpstreamURL: upstreamURL, Model: model,
+		Method: r.Method, Path: r.URL.Path, UpstreamURL: upstreamURL,
+		SessionID: cs.SessionID, Client: cs.Client, TurnID: cs.TurnID,
+		LastMsgRole: lastMsgRole([]byte(reqBody)),
+		Model: model,
 		ReqHeaders: redactHeaders(r.Header), ReqBody: truncate(reqBody, maxBodyRecord),
 		Error: truncate(sanitizeErr(err), 1024), StartedAt: startMS, EndedAt: &end,
 	})
@@ -400,6 +413,45 @@ func (h *Handler) recordFailure(vk *store.VirtualKey, upstreamID, keyID int64, r
 }
 
 // ---------- 工具 ----------
+
+// lastMsgRole 解析请求体末条消息的角色，供日志列表快速判断请求意图
+// （新输入 user / 工具结果回传 tool / 续传思考 reasoning 等）；截断或解析失败返回空。
+func lastMsgRole(body []byte) string {
+	var b struct {
+		Messages []struct {
+			Role string `json:"role"`
+		} `json:"messages"`
+		Input []json.RawMessage `json:"input"`
+	}
+	if err := json.Unmarshal(body, &b); err != nil {
+		return ""
+	}
+	if len(b.Messages) > 0 {
+		return b.Messages[len(b.Messages)-1].Role
+	}
+	if len(b.Input) > 0 {
+		var it struct {
+			Type string `json:"type"`
+			Role string `json:"role"`
+		}
+		if err := json.Unmarshal(b.Input[len(b.Input)-1], &it); err != nil {
+			return ""
+		}
+		switch {
+		case it.Type == "function_call" || it.Type == "custom_tool_call":
+			return "tool_call"
+		case strings.HasSuffix(it.Type, "_output"):
+			return "tool"
+		case it.Type == "reasoning":
+			return "reasoning"
+		case it.Role != "":
+			return it.Role
+		default:
+			return it.Type
+		}
+	}
+	return ""
+}
 
 // protoFromPath 按客户端请求路径判定协议：/anthropic → anthropic-compatible；
 // /responses 结尾 → openai-responses；其余（/v1/chat/completions 等）→ openai-compatible。

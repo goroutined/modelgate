@@ -77,6 +77,7 @@ func New(st *store.Store, token string, cat *provider.Source) http.Handler {
 
 	// 调用日志
 	mux.HandleFunc("GET /api/calls", s.listCalls)
+	mux.HandleFunc("GET /api/calls/sessions", s.listCallSessions)
 	mux.HandleFunc("GET /api/calls/{id}", s.getCall)
 	mux.HandleFunc("GET /api/calls/{id}/chunks", s.getChunks)
 
@@ -386,6 +387,24 @@ func (s *Server) listCalls(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, calls)
+}
+
+// listCallSessions 会话级分页的日志列表：按 session 分组返回，供会话折叠树展示。
+func (s *Server) listCallSessions(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	vkeyID, err := strconv.ParseInt(q.Get("virtual_key_id"), 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "virtual_key_id 无效")
+		return
+	}
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	sessions, total, err := s.store.ListCallSessions(vkeyID, limit, offset)
+	if err != nil {
+		mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions, "total": total})
 }
 
 func (s *Server) getCall(w http.ResponseWriter, r *http.Request) {
