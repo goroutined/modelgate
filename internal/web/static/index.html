@@ -166,6 +166,42 @@
   /* 本次拉取新增的日志行：左侧橙色竖条 + 微底色，与「新」徽章同一色系 */
   .wf-row.row-new { background:rgba(224,150,60,.07); box-shadow:inset 3px 0 0 #b06a20; }
   :root[data-theme="light"] .wf-row.row-new { background:#fdf6ea; }
+  /* ---------- 总览：大盘条 + 三栏链路图 ---------- */
+  .ov-stats { display:flex; gap:10px; flex-wrap:wrap; }
+  .ov-stat { flex:1; min-width:150px; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 14px; cursor:pointer; }
+  .ov-stat:hover { border-color:var(--accent); }
+  .ov-stat b { display:block; font-size:20px; }
+  .ov-stat span { display:block; color:var(--dim); font-size:12px; margin-top:2px; }
+  .ov-stat i { font-style:normal; font-size:11px; color:var(--dim); }
+  .ov-live-cell b .live-dot { display:inline-block; margin-right:6px; }
+  .ov-map-wrap { padding:0; overflow:hidden; }
+  .ov-map { display:flex; position:relative; min-height:340px; align-items:stretch; }
+  #ov-links { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  #ov-links path { fill:none; stroke:var(--dim); stroke-width:1.5; opacity:.35; }
+  #ov-links path.hl { stroke:var(--accent); stroke-width:2.5; opacity:1; }
+  #ov-links path.dim { opacity:.08; }
+  .ov-col { flex:1; padding:12px 16px 16px; display:flex; flex-direction:column; gap:8px; min-width:0; }
+  .ov-col + .ov-col { border-left:1px dashed var(--line); }
+  .ov-col-hd { font-size:12px; color:var(--dim); padding-bottom:4px; }
+  .ov-node { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; position:relative; z-index:1; transition:opacity .15s; }
+  .ov-node b { display:block; font-size:13px; }
+  .ov-node b em { font-style:normal; font-size:10px; color:var(--accent); margin-left:4px; }
+  .ov-node span { font-size:11px; color:var(--dim); display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ov-node.hl { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .ov-node.dim { opacity:.3; }
+  .ov-node.warn { border-color:#a06a20; }
+  .ov-node.ov-live { border-color:var(--accent); }
+  .ov-node.ov-live::before { content:''; position:absolute; left:-4px; top:50%; width:6px; height:6px; margin-top:-3px; border-radius:50%; background:var(--accent); animation:ovBreathe 1.2s ease-in-out infinite; }
+  @keyframes ovBreathe { 0%,100%{opacity:.35; transform:scale(.8)} 50%{opacity:1; transform:scale(1.25)} }
+  .ov-node.ov-add { border-style:dashed; text-align:center; }
+  .ov-node.ov-add b { color:var(--accent); }
+  .ov-empty { display:flex; flex-direction:column; gap:12px; width:100%; max-width:520px; margin:24px auto; }
+  .ov-step { display:flex; align-items:center; gap:12px; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 16px; cursor:pointer; }
+  .ov-step:hover { border-color:var(--accent); }
+  .ov-step-n { width:26px; height:26px; border-radius:50%; border:1px solid var(--line); display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--dim); flex:none; }
+  .ov-step b { display:block; font-size:14px; }
+  .ov-step span { font-size:11px; color:var(--dim); }
+  .ov-step-go { margin-left:auto; color:var(--accent); font-size:12px; white-space:nowrap; }
   .wf-row { display:flex; gap:10px; align-items:center; padding:10px; border-top:1px solid var(--line); cursor:pointer; }
   .wf-row:hover { background:var(--bg); }
   .wf-row.active { background:var(--bg); outline:1px solid var(--accent); }
@@ -242,6 +278,7 @@
   <p class="sub">LLM 代理网关</p>
   <button id="side-collapse" onclick="toggleSide()" title="收起菜单">« 收起菜单</button>
   <nav id="menu">
+    <button data-page="overview">总览</button>
     <button data-page="vkeys">虚拟 Key</button>
     <button data-page="keys">服务商与 Key</button>
     <button data-page="policies">转发策略</button>
@@ -258,6 +295,21 @@
 </aside>
 
 <main>
+<!-- ============ 总览 ============ -->
+<section id="page-overview" class="hidden">
+  <h2 class="page">总览</h2>
+  <p class="desc">调用链路全景：左侧虚拟 Key → 中间转发策略 → 右侧真实 Key。悬停任意节点高亮整条链路，可反向查看真实 Key 被哪些虚拟 Key 共用。</p>
+  <div class="panel" id="ov-stats"></div>
+  <div class="panel ov-map-wrap">
+    <div class="ov-map" id="ov-map">
+      <svg id="ov-links" preserveAspectRatio="none"></svg>
+      <div class="ov-col"><div class="ov-col-hd">虚拟 Key</div><div class="ov-col-bd" id="ov-col-vkeys"></div></div>
+      <div class="ov-col"><div class="ov-col-hd">转发策略</div><div class="ov-col-bd" id="ov-col-pols"></div></div>
+      <div class="ov-col"><div class="ov-col-hd">真实 Key</div><div class="ov-col-bd" id="ov-col-keys"></div></div>
+    </div>
+  </div>
+</section>
+
 <!-- ============ 服务商与 Key ============ -->
 <section id="page-keys" class="hidden">
   <h2 class="page">服务商与真实 Key</h2>
@@ -466,11 +518,11 @@ const fmtDur = ms => { if(ms==null) return '-'; if(ms<1000) return ms+'ms'; retu
 const fmtMS = ms => { const d=new Date(ms); return d.toLocaleTimeString('zh-CN',{hour12:false})+'.'+String(d.getMilliseconds()).padStart(3,'0'); };
 
 // ---------- hash 路由：#/vkeys #/keys #/policies #/settings #/stats[/id] #/logs[/id] ----------
-let route = {page:'vkeys', id:null};
+let route = {page:'overview', id:null};
 function go(hash){ if (location.hash === hash) routeRender(); else location.hash = hash; }
 function parseHash(){
   const h = (location.hash||'').replace(/^#\//,'').split('/');
-  const page = ['vkeys','keys','policies','settings','stats','logs'].includes(h[0]) ? h[0] : 'vkeys';
+  const page = ['overview','vkeys','keys','policies','settings','stats','logs'].includes(h[0]) ? h[0] : 'overview';
   route = {page, id: h[1] ? +h[1] : null};
 }
 function routeRender(){
@@ -479,6 +531,8 @@ function routeRender(){
   document.querySelectorAll('#menu button').forEach(b=>b.classList.toggle('active', b.dataset.page===route.page));
   $('page-'+route.page).classList.remove('hidden');
   klogLeave();
+  ovLeave();
+  if (route.page==='overview') renderOverview();
   if (route.page==='vkeys') loadVirtualKeys();
   if (route.page==='stats') renderStats();
   if (route.page==='logs') renderLogs();
@@ -819,6 +873,141 @@ async function addPolicy(){ try{ await api('/api/policies',{method:'POST',body:J
 
 // ---------- 虚拟 Key（真实Key + 协议联动） ----------
 function randKey(){ const c='abcdefghijklmnopqrstuvwxyz0123456789'; let s='mg-'; for(let i=0;i<24;i++)s+=c[Math.random()*c.length|0]; return s; }
+// ---------- 总览：大盘 + 三栏链路图（HTML 节点 + SVG 连线，hover 高亮全链路） ----------
+let ovWS = null, ovLive = new Map(); // vkey 字符串 → 进行中对话数
+let ovData = null, ovEdges = [];
+function ovLeave(){ if (ovWS){ ovWS.close(); ovWS=null; } }
+async function renderOverview(){
+  const [vks, pols, uks, stats] = await Promise.all([
+    api('/api/virtual-keys'), api('/api/policies'), api('/api/upstream-keys'), api('/api/stats/overview?days=1')
+  ]);
+  ovData = {vks: vks||[], pols: pols||[], uks: uks||[], stats: stats||[]};
+  ovRenderStats();
+  ovRenderMap();
+  ovLiveConnect();
+}
+function ovPolKeyID(p){ try{ return JSON.parse(p.config||'{}').upstream_key_id || 0; }catch{ return 0; } }
+function ovRenderStats(){
+  if (!ovData) return;
+  const s = {calls:0, ok:0, fail:0, pt:0, ct:0, cny:0, pts:0, unpriced:0};
+  ovData.stats.forEach(r=>{ s.calls+=r.calls; s.ok+=r.ok; s.fail+=r.fail; s.pt+=r.prompt_tokens; s.ct+=r.completion_tokens; s.cny+=r.cost_cny; s.pts+=r.cost_points; s.unpriced+=r.unpriced_calls||0; });
+  const live = [...ovLive.values()].reduce((a,b)=>a+b, 0);
+  const rate = s.calls ? Math.round(s.ok/s.calls*100)+'%' : '-';
+  const cost = s.cny>0 ? '￥'+s.cny.toFixed(2) : (s.pts>0 ? s.pts.toFixed(1)+' 积分' : '￥0.00');
+  const cell = (label, val, sub)=>'<div class="ov-stat" onclick="go(\'#/stats\')"><b>'+val+'</b><span>'+label+'</span>'+(sub?'<i>'+sub+'</i>':'')+'</div>';
+  $('ov-stats').innerHTML = '<div class="ov-stats">'
+    + (live?'<div class="ov-stat ov-live-cell" onclick="go(\'#/stats\')"><b><span class="live-dot"></span>'+live+'</b><span>实时对话中</span><i>链路图中呼吸灯标记</i></div>':'')
+    + cell('今日调用', fmtTok(s.calls), '成功率 '+rate)
+    + cell('今日 tokens', fmtTok(s.pt+s.ct), 'in '+fmtTok(s.pt)+' · out '+fmtTok(s.ct))
+    + cell('今日费用', cost, s.unpriced?('未计价 '+s.unpriced+' 次'):'')
+    + '</div>';
+}
+function ovRenderMap(){
+  if (!ovData) return;
+  const {vks, pols, uks} = ovData;
+  // 全空：三步引导，按已有数据打勾推进
+  if (!vks.length && !pols.length && !uks.length){
+    const step = (n, text, hash)=>'<div class="ov-step" onclick="go(\''+hash+'\')">'
+      +'<span class="ov-step-n">'+n+'</span><div><b>'+text[0]+'</b><span>'+text[1]+'</span></div><span class="ov-step-go">去添加 →</span></div>';
+    $('ov-map').innerHTML = '<div class="ov-empty">'
+      + step(1, ['添加真实 Key','在「服务商与 Key」页给服务商添加第一个 Key'], '#/keys')
+      + step(2, ['创建转发策略','在「转发策略」页选择一个真实 Key 固定转发'], '#/policies')
+      + step(3, ['创建虚拟 Key','在「虚拟 Key」页生成对外发放的 Key'], '#/vkeys')
+      + '</div>';
+    return;
+  }
+  ovEdges = [];
+  // 左栏：虚拟 Key（未绑策略标警示；正在调用亮呼吸灯）
+  $('ov-col-vkeys').innerHTML = vks.map(v=>{
+    const live = ovLive.get(v.key)||0;
+    const pol = pols.find(p=>p.id===v.policy_id);
+    if (pol) ovEdges.push({from:'v:'+v.id, to:'p:'+pol.id});
+    return '<div class="ov-node ov-vkey'+(live?' ov-live':'')+(!pol?' warn':'')+'" data-n="v:'+v.id+'" onclick="go(\'#/vkeys\')">'
+      +'<b>'+esc(v.name||v.key)+(live?' <em>对话中×'+live+'</em>':'')+'</b>'
+      +'<span><code>'+esc(v.key)+'</code>'+(pol?'':' · 未绑策略')+'</span></div>';
+  }).join('') || ovAddNode('虚拟 Key', '#/vkeys');
+  // 中栏：策略（指向的 Key 不存在标警示，连线断开）
+  $('ov-col-pols').innerHTML = pols.map(p=>{
+    const kid = ovPolKeyID(p);
+    const k = uks.find(x=>x.id===kid);
+    if (k) ovEdges.push({from:'p:'+p.id, to:'k:'+kid});
+    return '<div class="ov-node ov-pol'+(!k?' warn':'')+'" data-n="p:'+p.id+'" onclick="go(\'#/policies\')">'
+      +'<b>'+esc(p.name)+'</b><span>'+(k ? '固定 → '+esc(k.upstream+' · '+(k.label||('#'+k.id))) : '⚠ 未指向有效 Key')+'</span></div>';
+  }).join('') || ovAddNode('转发策略', '#/policies');
+  // 右栏：真实 Key（标注被几个策略引用——反向映射入口；状态异常标警示）
+  $('ov-col-keys').innerHTML = uks.map(k=>{
+    const used = pols.filter(p=>ovPolKeyID(p)===k.id).length;
+    return '<div class="ov-node ov-ukey'+(k.status!=='ok'?' warn':'')+'" data-n="k:'+k.id+'" onclick="go(\'#/keys\')">'
+      +'<b>'+esc(k.label||('#'+k.id))+'</b><span>'+esc(k.upstream)+' · '+(used?used+' 个策略引用':'未使用')+(k.status!=='ok'?' · '+esc(k.status):'')+'</span></div>';
+  }).join('') || ovAddNode('真实 Key', '#/keys');
+  requestAnimationFrame(ovDrawLinks);
+}
+function ovAddNode(label, hash){
+  return '<div class="ov-node ov-add" onclick="go(\''+hash+'\')"><b>+ 添加'+esc(label)+'</b><span>点击前往对应页面创建</span></div>';
+}
+function ovDrawLinks(){
+  const svg = $('ov-links'); if (!svg) return;
+  const map = $('ov-map'); if (!map || !map.isConnected) return;
+  const wrap = map.getBoundingClientRect();
+  if (!wrap.width) return;
+  svg.setAttribute('viewBox', '0 0 '+Math.round(wrap.width)+' '+Math.round(wrap.height));
+  svg.innerHTML = ovEdges.map(e=>{
+    const a = map.querySelector('.ov-node[data-n="'+e.from+'"]'), b = map.querySelector('.ov-node[data-n="'+e.to+'"]');
+    if (!a || !b) return '';
+    const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+    const x1 = ra.right - wrap.left, y1 = ra.top + ra.height/2 - wrap.top;
+    const x2 = rb.left - wrap.left, y2 = rb.top + rb.height/2 - wrap.top;
+    if (x2 <= x1) return '';
+    const dx = Math.max(20, (x2-x1)/2);
+    return '<path data-f="'+e.from+'" data-t="'+e.to+'" d="M'+x1.toFixed(1)+' '+y1.toFixed(1)+' C'+(x1+dx).toFixed(1)+' '+y1.toFixed(1)+', '+(x2-dx).toFixed(1)+' '+y2.toFixed(1)+', '+x2.toFixed(1)+' '+y2.toFixed(1)+'"/>';
+  }).join('');
+}
+// hover 任意节点：沿连线两跳扩散高亮整条链路（双向可读的落点）
+function ovHover(node){
+  const svg = $('ov-links'), map = $('ov-map'); if (!svg || !map) return;
+  map.querySelectorAll('.ov-node.hl,.ov-node.dim').forEach(x=>x.classList.remove('hl','dim'));
+  svg.querySelectorAll('path.hl,path.dim').forEach(x=>x.classList.remove('hl','dim'));
+  if (!node) return;
+  const nodes = new Set([node]); let frontier = [node];
+  for (let hop=0; hop<2 && frontier.length; hop++){
+    const next = [];
+    for (const n of frontier) for (const e of ovEdges){
+      if (e.from===n && !nodes.has(e.to)){ nodes.add(e.to); next.push(e.to); }
+      if (e.to===n && !nodes.has(e.from)){ nodes.add(e.from); next.push(e.from); }
+    }
+    frontier = next;
+  }
+  map.querySelectorAll('.ov-node').forEach(el=>el.classList.add(nodes.has(el.dataset.n)?'hl':'dim'));
+  ovEdges.forEach(e=>{
+    const p = svg.querySelector('path[data-f="'+e.from+'"][data-t="'+e.to+'"]');
+    if (p) p.classList.add(nodes.has(e.from) && nodes.has(e.to) ? 'hl' : 'dim');
+  });
+}
+// 实时对话：链路图上的 vKey 节点呼吸灯 + 大盘实时数
+function ovLiveConnect(){
+  if (ovWS) return;
+  const proto = location.protocol==='https:'?'wss':'ws';
+  const ws = new WebSocket(proto+'://'+location.host+'/api/live'+(token?'?token='+encodeURIComponent(token):''));
+  ovWS = ws;
+  ws.onmessage = ev=>{
+    if (ovWS!==ws) return;
+    const m = JSON.parse(ev.data);
+    if (m.type==='call_start'){ ovLive.set(m.body.vkey, (ovLive.get(m.body.vkey)||0)+1); ovRenderStats(); ovRenderMap(); }
+    if (m.type==='call_end'){
+      const n = (ovLive.get(m.body.vkey)||0)-1;
+      if (n>0) ovLive.set(m.body.vkey, n); else ovLive.delete(m.body.vkey);
+      ovRenderStats(); ovRenderMap();
+    }
+  };
+  ws.onclose = ()=>{ if (ovWS===ws) ovWS=null; };
+}
+// hover 委托 + resize 重画
+document.addEventListener('DOMContentLoaded', ()=>{
+  $('ov-map').addEventListener('mouseover', e=>{ const n = e.target.closest('.ov-node'); ovHover(n ? n.dataset.n : null); });
+  $('ov-map').addEventListener('mouseleave', ()=>ovHover(null));
+});
+window.addEventListener('resize', ()=>{ if (route.page==='overview') ovDrawLinks(); });
+
 async function loadVirtualKeys(){
   const list = (await api('/api/virtual-keys')) || [];
   const pols = (await api('/api/policies')) || [];
