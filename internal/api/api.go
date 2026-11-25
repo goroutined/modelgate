@@ -482,9 +482,13 @@ func decode[T any](r *http.Request) (*T, error) {
 
 // mapErr 将业务错误映射为 HTTP 状态码。
 func mapErr(w http.ResponseWriter, err error) {
+	var inUse *store.ErrInUse
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeErr(w, http.StatusNotFound, "资源不存在")
+	case errors.As(err, &inUse):
+		// 仍被引用、不能删除：409 + 面向用户的说明（界面优先用本地数据提前检查，这里是兜底）
+		writeErr(w, http.StatusConflict, inUse.Msg)
 	default:
 		writeErr(w, http.StatusBadRequest, err.Error())
 	}

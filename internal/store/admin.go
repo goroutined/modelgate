@@ -3,13 +3,21 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"strconv"
 	"strings"
 	"time"
 )
 
 var ErrNotFound = errors.New("not found")
+
+// ErrInUse：实体仍被其他配置引用，不能删除。Msg 直接面向用户，说明被谁引用、先怎么处理。
+type ErrInUse struct{ Msg string }
+
+func (e *ErrInUse) Error() string { return e.Msg }
 
 func now() int64 { return time.Now().Unix() }
 
@@ -377,7 +385,21 @@ func (s *Store) UpdateUpstream(id int64, name, note string, endpoints []Endpoint
 }
 
 func (s *Store) DeleteUpstream(id int64) error {
-	res, err := s.db.Exec(`DELETE FROM upstreams WHERE id=?`, id)
+	// 引用链 vKey → 策略 → Key → 服务商，从后往前解：下面还有 Key 就拒绝，提示先删 Key（以及引用这些 Key 的策略）
+	if _, err := s.GetUpstream(id); err != nil {
+		return err
+	}
+	keyIDs, err := s.keyIDsOfUpstream(id)
+	if err != nil {
+		return err
+	}
+	if len(keyIDs) > 0 {
+		refs, _ := s.policiesReferencingKeys(keyIDs)
+		return &ErrInUse{Msg: refHint(fmt.Sprintf("该服务商下还有 %d 个 Key，请先删除这些 Key 再移除服务商", len(keyIDs)), "策略", refs)}
+	}
+	// Key 已清空：在关闭外键的连接上删这一行，立即完成；
+	// 历史调用里指向它的 upstream_id 保留为悬空引用（LEFT JOIN 展示为未知），不改写大表
+	res, err := s.raw.Exec(`DELETE FROM upstreams WHERE id=?`, id)
 	if err != nil {
 		return err
 	}
@@ -388,6 +410,57 @@ func (s *Store) DeleteUpstream(id int64) error {
 }
 
 // ---------- upstream_keys ----------
+
+// keyIDsOfUpstream：某服务商下全部真实 Key 的 id
+func (s *Store) keyIDsOfUpstream(upstreamID int64) ([]int64, error) {
+	rows, err := s.db.Query(`SELECT id FROM upstream_keys WHERE upstream_id=?`, upstreamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// policiesReferencingKeys：引用了任一给定真实 Key 的策略名（fixed 策略的 config.upstream_key_id）
+func (s *Store) policiesReferencingKeys(keyIDs []int64) ([]string, error) {
+	if len(keyIDs) == 0 {
+		return nil, nil
+	}
+	set := make(map[int64]bool, len(keyIDs))
+	for _, id := range keyIDs {
+		set[id] = true
+	}
+	pols, err := s.ListPolicies()
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, p := range pols {
+		var cfg struct {
+			UpstreamKeyID int64 `json:"upstream_key_id"`
+		}
+		if json.Unmarshal([]byte(p.Config), &cfg) == nil && cfg.UpstreamKeyID > 0 && set[cfg.UpstreamKeyID] {
+			names = append(names, p.Name)
+		}
+	}
+	return names, nil
+}
+
+// refHint：有引用方时在提示后补一句「被谁引用、先怎么处理」
+func refHint(base, what string, names []string) string {
+	if len(names) == 0 {
+		return base
+	}
+	return base + "（被" + what + "引用：" + strings.Join(names, "、") + "，请先修改或删除）"
+}
 
 const upstreamKeyCols = `k.id, u.name, k.key, k.label, k.enabled, k.status, k.created_at, k.updated_at`
 
@@ -456,14 +529,26 @@ func (s *Store) UpdateUpstreamKey(id int64, label string, enabled bool) (*Upstre
 }
 
 func (s *Store) DeleteUpstreamKey(id int64) error {
-	res, err := s.db.Exec(`DELETE FROM upstream_keys WHERE id=?`, id)
+	// 被策略引用时拒绝：否则策略悬空，用它的 vKey 调用会直接失败
+	if _, err := s.GetUpstreamKey(id); err != nil {
+		return err
+	}
+	if refs, _ := s.policiesReferencingKeys([]int64{id}); len(refs) > 0 {
+		return &ErrInUse{Msg: refHint("该 Key 正被引用，暂时不能删除", "策略", refs)}
+	}
+	// 无引用后：在关闭外键的连接上删这一行，立即完成；历史调用保留悬空 id，真实 Key 维度统计显式清除
+	res, err := s.raw.Exec(`DELETE FROM upstream_keys WHERE id=?`, id)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	if _, err := s.db.Exec(`DELETE FROM stats_daily_uk WHERE upstream_key_id=?`, id); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`DELETE FROM stats_hourly_uk WHERE upstream_key_id=?`, id)
+	return err
 }
 
 // ---------- virtual_keys ----------
@@ -545,16 +630,102 @@ func (s *Store) UpdateVirtualKey(id int64, name string, policyID *int64, enabled
 }
 
 func (s *Store) DeleteVirtualKey(id int64) error {
-	res, err := s.db.Exec(`DELETE FROM virtual_keys WHERE id=?`, id)
+	// 先在关闭外键的连接上删 vKey 自身与统计（立即完成，接口马上返回）；
+	// 它的调用日志与分包体积很大，交给后台分批清理（purgeCallsOf），不占住唯一连接
+	res, err := s.raw.Exec(`DELETE FROM virtual_keys WHERE id=?`, id)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
+	for _, q := range []string{
+		`DELETE FROM stats_hourly WHERE virtual_key_id=?`,
+		`DELETE FROM stats_daily WHERE virtual_key_id=?`,
+		`DELETE FROM stats_daily_uk WHERE virtual_key_id=?`,
+	} {
+		if _, err := s.db.Exec(q, id); err != nil {
+			return err
+		}
+	}
+	go s.purgeCallsOf("virtual_key_id", id)
 	return nil
 }
 
+// purgeBatch：后台清理每批删除的调用条数；批间让出连接，其余请求不被阻塞。
+const purgeBatch = 200
+
+// purgeCallsOf：分批删除 calls 中 col=id 的调用及其分包。col 只接受代码里的常量列名。
+// 每条调用带 MB 级 body、分包动辄百万行，一次性删会长期占住唯一连接，所以放后台、小批量、批间 sleep。
+func (s *Store) purgeCallsOf(col string, id int64) {
+	for {
+		rows, err := s.db.Query(`SELECT id FROM calls WHERE `+col+`=? ORDER BY id LIMIT `+strconv.Itoa(purgeBatch), id)
+		if err != nil {
+			log.Printf("modelgate: 清理调用失败 %s=%d: %v", col, id, err)
+			return
+		}
+		var ids []int64
+		for rows.Next() {
+			var v int64
+			if rows.Scan(&v) == nil {
+				ids = append(ids, v)
+			}
+		}
+		rows.Close()
+		if len(ids) == 0 {
+			return
+		}
+		if err := s.deleteCallsBatch(ids); err != nil {
+			log.Printf("modelgate: 清理调用失败 %s=%d: %v", col, id, err)
+			return
+		}
+		if len(ids) < purgeBatch {
+			log.Printf("modelgate: 调用清理完成 %s=%d", col, id)
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// deleteCallsBatch：一个小事务删一批调用的分包与调用本身
+func (s *Store) deleteCallsBatch(ids []int64) error {
+	ph := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, len(ids))
+	for i, v := range ids {
+		args[i] = v
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM chunks WHERE call_id IN (`+ph+`)`, args...); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM calls WHERE id IN (`+ph+`)`, args...); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// purgeOrphanCalls：清掉不再属于任何 vKey 的调用（删 vKey 后后台没清完、或进程中途重启）
+func (s *Store) purgeOrphanCalls() {
+	rows, err := s.db.Query(`SELECT DISTINCT virtual_key_id FROM calls WHERE virtual_key_id IS NOT NULL AND virtual_key_id NOT IN (SELECT id FROM virtual_keys)`)
+	if err != nil {
+		return
+	}
+	var ids []int64
+	for rows.Next() {
+		var v int64
+		if rows.Scan(&v) == nil {
+			ids = append(ids, v)
+		}
+	}
+	rows.Close()
+	for _, id := range ids {
+		s.purgeCallsOf("virtual_key_id", id)
+	}
+}
 // ---------- policies ----------
 
 func scanPolicy(row interface{ Scan(...any) error }) (*Policy, error) {
@@ -626,13 +797,26 @@ func (s *Store) UpdatePolicy(id int64, name, typ, config string) (*Policy, error
 }
 
 func (s *Store) DeletePolicy(id int64) error {
-	// 绑定中的虚拟 key 会失效调用，先检查并提示
-	var n int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM virtual_keys WHERE policy_id=?`, id).Scan(&n); err != nil {
+	// 被虚拟 Key 引用时拒绝：否则 vKey 悬空、调用直接失败
+	rows, err := s.db.Query(`SELECT name, key FROM virtual_keys WHERE policy_id=?`, id)
+	if err != nil {
 		return err
 	}
-	if n > 0 {
-		return fmt.Errorf("仍有 %d 个虚拟 key 绑定该策略，先解绑再删除", n)
+	var names []string
+	for rows.Next() {
+		var name, key string
+		if err := rows.Scan(&name, &key); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "" {
+			name = key
+		}
+		names = append(names, name)
+	}
+	rows.Close()
+	if len(names) > 0 {
+		return &ErrInUse{Msg: refHint("该策略正被引用，暂时不能删除", "虚拟 Key ", names)}
 	}
 	res, err := s.db.Exec(`DELETE FROM policies WHERE id=?`, id)
 	if err != nil {

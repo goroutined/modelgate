@@ -18,7 +18,9 @@ var migrationFS embed.FS
 
 // Store 持有数据库句柄；所有表访问通过它进行。
 type Store struct {
-	db *sql.DB
+	db   *sql.DB
+	path string
+	raw  *sql.DB // 结构删除专用连接：关闭外键检查，见 openRaw
 }
 
 // Open 打开（必要时创建）数据库并执行 migrations。
@@ -39,15 +41,42 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("store: 打开 %s: %w", path, err)
 	}
 	db.SetMaxOpenConns(1) // SQLite 单写者，串行化避免 SQLITE_BUSY
-	s := &Store{db: db}
-	if err := s.migrate(); err != nil {
+	raw, err := openRaw(path)
+	if err != nil {
 		db.Close()
 		return nil, err
 	}
+	s := &Store{db: db, path: path, raw: raw}
+	if err := s.migrate(); err != nil {
+		db.Close()
+		raw.Close()
+		return nil, err
+	}
+	// 启动兜底：上次后台清理没跑完（进程中途重启）留下的孤儿调用，继续在后台清
+	go s.purgeOrphanCalls()
 	return s, nil
 }
 
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error {
+	if s.raw != nil {
+		s.raw.Close()
+	}
+	return s.db.Close()
+}
+
+// openRaw 打开一条关闭外键检查的连接，只用于「结构删除」（删 key / 服务商 / vKey 自身那一行）。
+// 原因：唯一的普通连接下，开着外键删一行就得把引用它的历史调用逐行改写——每条调用带 MB 级 body，
+// 上万行会把连接占住几分钟，期间所有 API 排队（表现为删除后页面不更新、刷新白屏）。
+// 代价是 calls 里留下悬空的历史 id；所有关联查询都是 LEFT JOIN，展示为未知即可。
+func openRaw(path string) (*sql.DB, error) {
+	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(0)", path)
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("store: 打开结构删除连接 %s: %w", path, err)
+	}
+	db.SetMaxOpenConns(1)
+	return db, nil
+}
 
 // migrate 按文件名顺序执行 migrations/*.sql；已执行的记录在 schema_migrations。
 func (s *Store) migrate() error {

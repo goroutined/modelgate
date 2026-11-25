@@ -6,38 +6,68 @@
 <title>modelgate 控制台</title>
 <style>
   /* 主题：dark 默认；light 覆盖；auto 跟随系统 */
-  :root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --text:#e6e9ef; --dim:#8b93a3; --accent:#4f8cff; --ok:#3fb96f; --warn:#e0a83c; --side:#12141a; }
-  :root[data-theme="light"] { --bg:#f5f6f8; --panel:#ffffff; --line:#e2e5ea; --text:#1c2128; --dim:#6b7280; --accent:#2563eb; --ok:#16a34a; --warn:#b45309; --side:#eceef2; }
+  /* 设计令牌：基础色 + 语义色（角色/阶段/缓存/新增标记），深浅主题各一份；规则里只引用变量，不再写死颜色 */
+  :root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --text:#e6e9ef; --dim:#8b93a3; --accent:#4f8cff; --ok:#3fb96f; --warn:#e0a83c; --danger:#e0605a; --side:#12141a;
+    --role-user-bg:#1d3a2a; --role-user-fg:#8fe0b0; --role-assistant-bg:#1d2c4a; --role-assistant-fg:#a8c8ff;
+    --role-system-bg:#3d3a1d; --role-system-fg:#e8e0a8; --role-tool-bg:#3a2a3d; --role-tool-fg:#e0b8e8;
+    --role-tool_call-bg:#22224a; --role-tool_call-fg:#b0b0ff; --role-reasoning-bg:#1a2e38; --role-reasoning-fg:#a0d0e0;
+    --role-other-bg:#2a2a2a; --role-other-fg:#aaaaaa;
+    --ph-first:#c586c0; --ph-think:#569cd6; --ph-out:#4ec9b0; --ph-tool:#dcdcaa;
+    --cache-hi:#4ec9b0; --cache-mid:#569cd6; --cache-low:#dcdcaa; --cache-vlow:#ce9178;
+    --new-bg:#7a4a1a; --new-fg:#ffd9a0; --new-line:#a06a20; --new-row-bg:rgba(224,150,60,.07);
+    --shadow:0 1px 4px rgba(0,0,0,.2); --shadow-lg:-8px 0 30px rgba(0,0,0,.4); }
+  :root[data-theme="light"] { --bg:#f5f6f8; --panel:#ffffff; --line:#e2e5ea; --text:#1c2128; --dim:#6b7280; --accent:#2563eb; --ok:#16a34a; --warn:#b45309; --danger:#c0392b; --side:#eceef2;
+    --role-user-bg:#e2f3e9; --role-user-fg:#1c7a45; --role-assistant-bg:#e3ecfb; --role-assistant-fg:#2358c4;
+    --role-system-bg:#f6eecb; --role-system-fg:#8a6d14; --role-tool-bg:#f0e4f4; --role-tool-fg:#7b4a8a;
+    --role-tool_call-bg:#e8e8fb; --role-tool_call-fg:#5555cc; --role-reasoning-bg:#e2f0f6; --role-reasoning-fg:#2a6a80;
+    --role-other-bg:#eeeeee; --role-other-fg:#666666;
+    --new-bg:#fdf0dd; --new-fg:#a05a10; --new-line:#a06a20; --new-row-bg:#fdf6ea;
+    --shadow:0 1px 3px rgba(0,0,0,.08); --shadow-lg:-8px 0 30px rgba(0,0,0,.12); }
   /* auto：默认按系统亮色时应用 light 变量（JS 会在 auto 下显式设置） */
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.6 ui-sans-serif,system-ui,"PingFang SC",sans-serif; display:flex; min-height:100vh; }
-  /* 侧栏固定视口高度并吸顶：不被主内容撑高，主题/令牌始终可见，自身内容可滚 */
-  aside { width:200px; background:var(--side); border-right:1px solid var(--line); padding:16px 10px 8px; flex-shrink:0; display:flex; flex-direction:column; position:sticky; top:0; height:100vh; overflow-y:auto; }
+  /* 字阶（只减不增，屏效优先）：10 等宽标注 / 11 中文辅助 / 12 正文·表格·表单 / 14 标题 / 16 指标；日志行 9px 等宽为密度标杆，不动 */
+  body { margin:0; background:var(--bg); color:var(--text); font:13px/1.45 ui-sans-serif,system-ui,"PingFang SC",sans-serif; display:flex; min-height:100vh; }
+  /* 侧栏固定视口高度：只有菜单区可滚，品牌与主题控件始终可见，不被主内容撑高 */
+  aside { width:200px; background:var(--side); border-right:1px solid var(--line); padding:12px 10px 8px; flex-shrink:0; display:flex; flex-direction:column; position:sticky; top:0; height:100vh; overflow:hidden; }
+  aside > h1, aside > .sub, #side-collapse { flex-shrink:0; }
   /* 侧边栏可收起：收起后隐藏，左上角浮动按钮展开 */
   body.side-off aside { display:none; }
-  #side-toggle { display:none; position:fixed; top:10px; left:10px; z-index:70; background:var(--panel); border:1px solid var(--line); color:var(--text); border-radius:6px; padding:4px 10px; cursor:pointer; font-size:15px; }
+  #side-toggle { display:none; position:fixed; top:10px; left:10px; z-index:70; background:var(--panel); border:1px solid var(--line); color:var(--text); border-radius:4px; padding:4px 10px; cursor:pointer; font-size:13px; }
   body.side-off #side-toggle { display:block; }
-  #side-collapse { background:none; border:none; color:var(--dim); cursor:pointer; padding:6px 8px; font-size:13px; width:100%; text-align:left; margin-top:8px; }
-  aside h1 { font-size:15px; margin:0 0 4px 10px; }
-  aside .sub { font-size:11px; color:var(--dim); margin:0 0 18px 10px; }
-  aside nav { display:flex; flex-direction:column; gap:2px; }
-  aside nav button { background:none; border:none; color:var(--dim); padding:8px 12px; cursor:pointer; border-radius:6px; font-size:13px; text-align:left; }
+  #side-collapse { background:none; border:none; color:var(--dim); cursor:pointer; padding:4px 8px; font-size:11px; width:100%; text-align:left; margin-top:4px; }
+  aside h1 { font-size:14px; margin:0 0 2px 10px; }
+  aside .sub { font-size:11px; color:var(--dim); margin:0 0 12px 10px; }
+  /* 菜单区：空间不足时自身滚动，不滚走品牌和主题控件 */
+  aside nav { display:flex; flex-direction:column; gap:2px; flex:0 1 auto; min-height:0; overflow-y:auto; }
+  aside nav button { background:none; border:none; color:var(--dim); padding:5px 10px; cursor:pointer; border-radius:4px; font-size:12px; text-align:left; }
   aside nav button.active { background:var(--panel); color:var(--text); }
-  aside nav .sep { border-top:1px solid var(--line); margin:10px 6px; }
-  aside .tok { margin-top:auto; padding:10px; font-size:11px; color:var(--dim); }
-  main { flex:1; padding:20px 24px; min-width:0; } /* 占满剩余宽度 */
-  h2.page { font-size:16px; margin:0 0 4px; }
-  p.desc { color:var(--dim); font-size:12px; margin:0 0 16px; }
-  table { width:100%; border-collapse:collapse; margin:12px 0; }
-  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  aside nav button:hover { color:var(--text); }
+  aside nav .sep { border-top:1px solid var(--line); margin:8px 6px; flex-shrink:0; }
+  aside .tok { margin-top:auto; padding:10px 10px 2px; font-size:11px; color:var(--dim); flex-shrink:0; }
+  main { flex:1; padding:12px 16px 20px; min-width:0; } /* 占满剩余宽度，不设最大宽度 */
+  h2.page { font-size:14px; font-weight:600; margin:0 0 2px; }
+  p.desc { color:var(--dim); font-size:11px; margin:0 0 10px; }
+  /* 表格：行高约 28px；只有说明列吃剩余宽度，其余列按内容定宽，数字列右对齐 */
+  table { width:100%; border-collapse:collapse; margin:8px 0; }
+  th, td { text-align:left; padding:4px 10px; border-bottom:1px solid var(--line); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums; }
   th { color:var(--dim); font-weight:500; }
+  th.num, td.num { text-align:right; }
   tbody tr:hover { background:var(--bg); } /* 行 hover 便于横向扫读 */
-  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:16px; }
-  .panel h3 { font-size:13px; margin:0 0 10px; color:var(--dim); }
-  input, select { background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:6px; padding:6px 8px; font-size:13px; }
-  button.primary { background:var(--accent); color:#fff; border:none; border-radius:6px; padding:6px 14px; cursor:pointer; }
-  button.small { background:var(--line); color:var(--text); border:none; border-radius:5px; padding:3px 10px; cursor:pointer; font-size:12px; }
-  button.danger { background:none; color:var(--warn); border:none; border-radius:5px; padding:3px 10px; cursor:pointer; font-size:12px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:10px; }
+  .panel h3 { font-size:12px; font-weight:600; margin:0 0 6px; color:var(--dim); }
+  /* 一个面板内分段：细线分隔，替代多个面板各带边框与内外边距 */
+  .sect + .sect { border-top:1px solid var(--line); margin-top:10px; padding-top:8px; }
+  .sect > table:last-child { margin-bottom:0; }
+  /* 接入信息：标签列 + 值，BaseURL 加大加粗便于照抄 */
+  .conn { display:grid; grid-template-columns:56px auto auto; gap:4px 10px; align-items:center; justify-content:start; }
+  .conn-k { color:var(--dim); font-size:11px; }
+  .conn-url { font-size:13px; font-weight:600; padding:3px 8px; }
+  input, select { background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:4px; padding:4px 8px; font-size:12px; }
+  button.primary { background:var(--accent); color:#fff; border:none; border-radius:4px; padding:4px 12px; cursor:pointer; font-size:12px; }
+  button.small { background:var(--line); color:var(--text); border:none; border-radius:4px; padding:2px 8px; cursor:pointer; font-size:11px; }
+  button.ghost { background:none; border:1px solid var(--line); color:var(--text); border-radius:4px; padding:2px 8px; cursor:pointer; font-size:11px; }
+  button.danger { background:none; color:var(--danger); border:none; border-radius:4px; padding:2px 8px; cursor:pointer; font-size:11px; margin-left:14px; }
+  button:hover { filter:brightness(1.12); }
   /* 开关 switch：替代下拉/按钮表达二态 */
   .switch { position:relative; display:inline-block; width:34px; height:18px; flex-shrink:0; vertical-align:middle; }
   .switch input { display:none; }
@@ -46,27 +76,47 @@
   .switch input:checked + i { background:var(--ok); }
   .switch input:checked + i::after { left:18px; }
   /* 分段滑块：短选项集合，替代下拉 */
-  .seg { display:inline-flex; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:2px; gap:2px; }
-  .seg button { background:none; border:none; color:var(--dim); padding:3px 10px; border-radius:6px; cursor:pointer; font-size:12px; }
-  .seg button.on { background:var(--panel); color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,.2); }
+  .seg { display:inline-flex; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:2px; gap:2px; }
+  .seg button { background:none; border:none; color:var(--dim); padding:2px 8px; border-radius:4px; cursor:pointer; font-size:11px; }
+  .seg button.on { background:var(--panel); color:var(--text); box-shadow:var(--shadow); }
   #theme-seg { width:100%; }
   #theme-seg button { flex:1; padding:3px 2px; white-space:nowrap; } /* 侧栏窄，三键等分不折行 */
   /* 自定义确认弹层：替代原生 confirm，可携带影响面提示 */
-  #cf { position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; z-index:90; align-items:center; justify-content:center; }
-  #cf.open { display:flex; }
-  #cf .box { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px 20px; width:min(380px,90vw); }
-  #cf h3 { margin:0 0 8px; font-size:14px; }
-  #cf p { margin:0 0 14px; font-size:13px; color:var(--dim); }
+  /* 居中弹层共用：#cm 卡片编辑弹窗（新建/编辑/删除）、#cf 删除二次确认（DOM 在后，叠在 #cm 上） */
+  #cf, #cm { position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; z-index:90; align-items:center; justify-content:center; }
+  #cf.open, #cm.open { display:flex; }
+  #cf .box, #cm .box { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px; width:min(380px,90vw); }
+  #cf .box { width:min(460px,90vw); }
+  #cm .box { width:min(560px,92vw); }
+  #cf h3, #cm h3 { margin:0 0 6px; font-size:13px; }
+  #cf p { margin:0 0 10px; font-size:12px; color:var(--dim); }
+  /* 说明型弹层的清单：被谁引用、先处理什么；名字可点进对应弹窗 */
+  #cf-msg b { color:var(--text); font-weight:600; }
+  #cf-msg ul { margin:4px 0 0; padding-left:18px; }
+  #cf-msg li { margin:2px 0; }
+  #cf-msg a { color:var(--accent); text-decoration:none; }
+  #cf-msg a:hover { text-decoration:underline; }
+  #cm-body { margin:6px 0 10px; }
+  .cm-foot { margin:0; align-items:center; }
+  .cm-foot .danger { margin-left:0; }
+  /* 表单网格：标签列定宽，输入框上下对齐（设置页与弹窗共用） */
+  .form-grid { display:grid; grid-template-columns:176px minmax(0,1fr); gap:6px 14px; align-items:center; max-width:760px; }
+  .form-grid label { font-size:11px; color:var(--dim); }
+  .form-grid input[type=number] { width:120px; }
   /* 空状态引导 */
-  .empty { text-align:center; padding:28px 10px; color:var(--dim); font-size:13px; }
-  .empty b { display:block; margin-bottom:6px; color:var(--text); font-size:14px; }
+  .empty { text-align:center; padding:20px 10px; color:var(--dim); font-size:12px; }
+  .empty b { display:block; margin-bottom:4px; color:var(--text); font-size:13px; }
   /* 展开块用强调色描边，与收起状态区分 */
   .edit-box, #custom-form { border-left:3px solid var(--accent); }
-  tr.edit-row > td { background:var(--bg); border-left:3px solid var(--accent); }
   .sec:has(.sec-body:not(.hidden)) > .sec-hdr { border-left:3px solid var(--accent); padding-left:7px; }
-  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0; }
-  .badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px; background:var(--line); }
-  .badge.ok { color:var(--ok); } .badge.err { color:var(--warn); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:6px 0; }
+  .badge { display:inline-block; padding:0 6px; border-radius:999px; font-size:11px; line-height:1.6; background:var(--line); white-space:nowrap; }
+  .badge.ok { color:var(--ok); } .badge.err { color:var(--danger); }
+  /* 指标项：标签(淡) + 数值，替代一排同款药丸，便于横向扫读 */
+  .kpi { display:inline-flex; align-items:baseline; gap:4px; font-size:11px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .kpi i { font-style:normal; color:var(--dim); font-size:10px; }
+  .kpi b { font-weight:600; }
+  .kpi .up, .kpi.up { color:var(--ok); } .kpi .down, .kpi.down { color:var(--danger); }
   pre { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px; overflow:auto; font-size:12px; white-space:pre-wrap; word-break:break-all; } /* 不限高度直接平铺 */
   .chunk-bar { display:flex; align-items:flex-end; gap:1px; height:60px; }
   .chunk-bar span { background:var(--accent); width:3px; border-radius:1px; }
@@ -83,55 +133,54 @@
     #klog-drawer { width:100vw !important; max-width:none !important; }
     .row { gap:6px; }
   }
-  code { background:var(--bg); padding:1px 5px; border-radius:4px; font-size:12px; }
-  .hint { font-size:12px; color:var(--dim); }
+  code { background:var(--bg); padding:0 4px; border-radius:4px; font-size:12px; }
+  .hint { font-size:11px; color:var(--dim); }
   .ml-list { display:flex; flex-wrap:wrap; gap:6px; max-height:260px; overflow:auto; }
-  .ml-item { display:inline-flex; gap:6px; align-items:center; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 6px 4px 10px; font-size:12px; }
+  .ml-item { display:inline-flex; gap:6px; align-items:center; background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:4px 6px 4px 10px; font-size:12px; }
   .ml-item.added { opacity:.45; }
-  .up-card { border:1px solid var(--line); border-radius:8px; margin-bottom:10px; overflow:hidden; }
-  .up-card .head { display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--bg); }
-  .up-card .head b { font-size:14px; }
-  .edit-box { padding:10px 14px; border-top:1px solid var(--line); background:var(--bg); }
-  .edit-box label { font-size:12px; color:var(--dim); }
+  .up-card { border:1px solid var(--line); border-radius:8px; margin-bottom:8px; overflow:hidden; }
+  .up-card .head { display:flex; align-items:center; gap:6px 10px; padding:6px 12px; background:var(--bg); flex-wrap:wrap; }
+  .up-card .head b { font-size:12px; }
+  /* 服务商卡片头分两级：主行（名称/Key 数/操作）、副行（ID/协议/链接/模型），主次分明 */
+  .up-card .head.col { flex-direction:column; align-items:stretch; gap:2px; }
+  .up-card .head-main { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .up-card .head-sub { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--dim); }
+  .up-card .head-sub .badge { font-size:10px; padding:0 5px; }
+  .up-card .head-sub a, .up-card .head-sub button { font-size:11px; padding:0 4px; }
+  .edit-box { padding:8px 12px; border-top:1px solid var(--line); background:var(--bg); }
+  .edit-box label { font-size:11px; color:var(--dim); }
   /* 阶段色带：发送(蓝) 等上游(橙) 等首字节(紫) 输出(青) —— 色弱友好配合图例文字 */
   .phase-band { display:flex; height:10px; border-radius:3px; overflow:hidden; margin:6px 0 2px; background:var(--line); }
   .phase-band i { display:block; min-width:2px; }
-  .ph-send { background:#4f8cff; } .ph-wait { background:#e0a83c; }
-  /* 阶段色：与 viewer 一致 First token(紫红) / Thinking(蓝) / Output(青) / Toolcall(黄) */
-  .ph-first { background:#c586c0; } .ph-think { background:#569cd6; } .ph-out { background:#4ec9b0; } .ph-tool { background:#dcdcaa; }
+  .ph-send { background:var(--accent); } .ph-wait { background:var(--warn); }
+  /* 阶段色：与 viewer 一致 First token(紫红) / Thinking(蓝) / Output(青) / Toolcall(黄)，取语义变量 */
+  .ph-first { background:var(--ph-first); } .ph-think { background:var(--ph-think); } .ph-out { background:var(--ph-out); } .ph-tool { background:var(--ph-tool); }
   /* 阶段图例：viewer 规范命名 */
-  .wf-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--dim); padding:2px 2px 8px; }
+  .wf-legend { display:flex; gap:10px; font-size:10px; color:var(--dim); padding:0; white-space:nowrap; }
   .wf-legend i { display:inline-block; width:14px; height:8px; border-radius:2px; margin-right:4px; vertical-align:middle; }
   .phase-legend { display:flex; gap:10px; font-size:11px; color:var(--dim); margin:2px 0 10px; flex-wrap:wrap; }
   .phase-legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:3px; vertical-align:-1px; }
   /* 折叠分区 */
-  .sec { border:1px solid var(--line); border-radius:6px; margin:8px 0; } /* 不能 overflow:hidden，否则破坏 sec-hdr 吸顶 */
-  .sec-hdr { display:flex; align-items:center; gap:6px; padding:7px 10px; background:var(--bg); cursor:pointer; font-size:12px; font-weight:600; color:var(--accent); position:sticky; top:0; z-index:5; }
+  .sec { border:1px solid var(--line); border-radius:6px; margin:6px 0; } /* 不能 overflow:hidden，否则破坏 sec-hdr 吸顶 */
+  .sec-hdr { display:flex; align-items:center; gap:6px; padding:4px 10px; background:var(--bg); cursor:pointer; font-size:11px; font-weight:600; color:var(--accent); position:sticky; top:0; z-index:5; }
   .sec-hdr .cnt { color:var(--dim); font-weight:normal; }
   .sec-body { padding:4px 8px; }
   /* 消息 */
-  .msg { background:var(--bg); border-left:3px solid var(--dim); border-radius:4px; margin:4px 0; }
-  .msg.role-user { border-left-color:#4caf7d; } .msg.role-assistant { border-left-color:#4f8cff; }
-  .msg.role-system { border-left-color:#e0a83c; } .msg.role-tool { border-left-color:#a78bfa; }
-  .msg.role-tool_call { border-left-color:#5f7fd0; } .msg.role-reasoning { border-left-color:#6a9ab8; }
-  .msg.role-other { border-left-color:#888; }
-  .msg-hdr { display:flex; align-items:center; gap:8px; padding:5px 8px; cursor:pointer; }
-  .role { font-size:11px; padding:1px 8px; border-radius:3px; font-family:ui-monospace,monospace; background:var(--line); }
-  .role-instructions, .role-developer { background:#3d3a1d; color:#e8e0a8; }
-  :root[data-theme="light"] .role-instructions, :root[data-theme="light"] .role-developer { background:#f6eecb; color:#8a6d14; }
-  /* role 标签适配双主题：深色系原值，浅色主题覆盖为浅底深字 */
-  .role-user { background:#1d3a2a; color:#8fe0b0; } .role-assistant { background:#1d2c4a; color:#a8c8ff; }
-  .role-system { background:#3d3a1d; color:#e8e0a8; } .role-tool { background:#3a2a3d; color:#e0b8e8; }
-  /* tool_call=工具调用（与结果 role-tool 区分），reasoning=历史思考，other=未知类型占位 */
-  .role-tool_call { background:#22224a; color:#b0b0ff; } .role-reasoning { background:#1a2e38; color:#a0d0e0; }
-  .role-other { background:#2a2a2a; color:#aaaaaa; }
-  :root[data-theme="light"] .role-user { background:#e2f3e9; color:#1c7a45; }
-  :root[data-theme="light"] .role-assistant { background:#e3ecfb; color:#2358c4; }
-  :root[data-theme="light"] .role-system { background:#f6eecb; color:#8a6d14; }
-  :root[data-theme="light"] .role-tool { background:#f0e4f4; color:#7b4a8a; }
-  :root[data-theme="light"] .role-tool_call { background:#e8e8fb; color:#5555cc; }
-  :root[data-theme="light"] .role-reasoning { background:#e2f0f6; color:#2a6a80; }
-  :root[data-theme="light"] .role-other { background:#eeeeee; color:#666666; }
+  .msg { background:var(--bg); border-left:3px solid var(--role-other-fg); border-radius:4px; margin:3px 0; }
+  .msg.role-user { border-left-color:var(--role-user-fg); } .msg.role-assistant { border-left-color:var(--role-assistant-fg); }
+  .msg.role-system { border-left-color:var(--role-system-fg); } .msg.role-tool { border-left-color:var(--role-tool-fg); }
+  .msg.role-tool_call { border-left-color:var(--role-tool_call-fg); } .msg.role-reasoning { border-left-color:var(--role-reasoning-fg); }
+  .msg.role-other { border-left-color:var(--role-other-fg); }
+  .msg-hdr { display:flex; align-items:center; gap:8px; padding:3px 8px; cursor:pointer; }
+  .role { font-size:10px; padding:0 6px; border-radius:3px; line-height:1.6; font-family:ui-monospace,monospace; background:var(--line); }
+  /* role 标签：底/字取语义变量，深浅主题自动适配（tool_call=工具调用，与结果 role-tool 区分；other=未知类型占位） */
+  .role-user { background:var(--role-user-bg); color:var(--role-user-fg); }
+  .role-assistant { background:var(--role-assistant-bg); color:var(--role-assistant-fg); }
+  .role-system, .role-instructions, .role-developer { background:var(--role-system-bg); color:var(--role-system-fg); }
+  .role-tool { background:var(--role-tool-bg); color:var(--role-tool-fg); }
+  .role-tool_call { background:var(--role-tool_call-bg); color:var(--role-tool_call-fg); }
+  .role-reasoning { background:var(--role-reasoning-bg); color:var(--role-reasoning-fg); }
+  .role-other { background:var(--role-other-bg); color:var(--role-other-fg); }
   .msg-preview { color:var(--dim); font-size:11px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .msg-body { padding:2px 8px 6px; }
   /* SSE 行 */
@@ -148,58 +197,65 @@
   .wf-bar { position:absolute; top:0; height:12px; min-width:3px; border-radius:2px; display:flex; overflow:hidden; box-shadow:0 0 0 1px rgba(128,128,128,.25); }
   /* 横排时间轴行 */
   .wf-group { border:1px solid var(--line); border-radius:8px; margin:10px 0; overflow:hidden; }
-  .wf-group-hdr { display:flex; gap:10px; padding:5px 10px; background:var(--bg); font-size:11px; color:var(--dim); font-family:ui-monospace,monospace; }
+  .wf-group-hdr { display:flex; gap:10px; padding:4px 10px; background:var(--bg); font-size:10px; color:var(--dim); font-family:ui-monospace,monospace; }
   /* 会话分组两层结构：session 外层容器（主标题）+ turn 内层 wf-group（细分段） */
   /* overflow 不能为 hidden：sticky 头在 hidden 滚动容器内会失效（圆角交给子元素自带） */
   .wf-sess { border:1px solid var(--line); border-radius:10px; margin:14px 0; }
   /* 会话/轮次头吸顶：turn 展开后内容很长，滚动时头部保持可见、随时可点收起 */
-  .wf-sess-hdr { display:flex; gap:12px; padding:8px 12px; font-size:13px; font-weight:600; border-bottom:1px solid var(--line); background:var(--bg); cursor:pointer; user-select:none; position:sticky; top:0; z-index:6; }
-  .wf-sess-hdr span:not(:first-child) { color:var(--dim); font-weight:400; font-size:11px; font-family:ui-monospace,monospace; }
+  .wf-sess-hdr { display:flex; gap:12px; padding:5px 10px; font-size:12px; font-weight:600; border-bottom:1px solid var(--line); background:var(--bg); cursor:pointer; user-select:none; position:sticky; top:0; z-index:6; }
+  .wf-sess-hdr span:not(:first-child) { color:var(--dim); font-weight:400; font-size:10px; font-family:ui-monospace,monospace; }
   .wf-sess .wf-group { margin:0; border:none; border-radius:0; border-bottom:1px dashed var(--line); overflow:visible; } /* 覆盖基类 hidden：否则 turn 头 sticky 失效 */
   .wf-sess .wf-group:last-child { border-bottom:none; }
   .wf-group-hdr { background:var(--bg); }
   .wf-sess .wf-group-hdr { position:sticky; top:var(--sess-hdr-h, 38px); z-index:5; } /* 紧贴吸顶会话头的底边，高度由渲染后实测写入变量 */
   /* 分页新增分组的标记：橙色徽章 + 会话容器描边，下次加载更多时自然消失 */
-  .new-flag { display:inline-block; font-size:10px; padding:0 5px; border-radius:3px; background:#7a4a1a; color:#ffd9a0; font-weight:600; }
-  :root[data-theme="light"] .new-flag { background:#fdf0dd; color:#a05a10; }
-  .wf-sess.has-new { border-color:#a06a20; }
+  .new-flag { display:inline-block; font-size:10px; padding:0 5px; border-radius:3px; background:var(--new-bg); color:var(--new-fg); font-weight:600; }
+  .wf-sess.has-new { border-color:var(--new-line); }
   /* 本次拉取新增的日志行：左侧橙色竖条 + 微底色，与「新」徽章同一色系 */
-  .wf-row.row-new { background:rgba(224,150,60,.07); box-shadow:inset 3px 0 0 #b06a20; }
-  :root[data-theme="light"] .wf-row.row-new { background:#fdf6ea; }
+  .wf-row.row-new { background:var(--new-row-bg); box-shadow:inset 3px 0 0 var(--new-line); }
   /* ---------- 总览：大盘条 + 三栏链路图 ---------- */
-  .ov-stats { display:flex; gap:10px; flex-wrap:wrap; }
-  .ov-stat { flex:1; min-width:150px; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 14px; cursor:pointer; }
-  .ov-stat:hover { border-color:var(--accent); }
-  .ov-stat b { display:block; font-size:20px; }
-  .ov-stat span { display:block; color:var(--dim); font-size:12px; margin-top:2px; }
-  .ov-stat i { font-style:normal; font-size:11px; color:var(--dim); }
-  .ov-live-cell b .live-dot { display:inline-block; margin-right:6px; }
+  /* 大盘：一条指标带（标签在左、数值在右），约 44px 高 */
+  .ov-stats { display:flex; flex-wrap:wrap; }
+  .ov-stat { display:flex; align-items:baseline; gap:6px; padding:4px 16px; border-left:1px solid var(--line); cursor:pointer; white-space:nowrap; }
+  .ov-stat:first-child { border-left:none; padding-left:2px; }
+  .ov-stat:hover b { color:var(--accent); }
+  .ov-stat span { color:var(--dim); font-size:11px; }
+  .ov-stat b { font-size:16px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .ov-stat i { font-style:normal; font-size:10px; color:var(--dim); }
+  .ov-stat.warn b { color:var(--warn); }
+  .ov-live-cell b .live-dot { display:inline-block; margin-right:6px; vertical-align:middle; }
   .ov-map-wrap { padding:0; overflow:hidden; }
-  .ov-map { display:flex; position:relative; min-height:340px; align-items:stretch; }
+  .ov-map { display:flex; position:relative; min-height:260px; align-items:stretch; }
   #ov-links { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
-  #ov-links path { fill:none; stroke:var(--dim); stroke-width:1.5; opacity:.35; }
-  #ov-links path.hl { stroke:var(--accent); stroke-width:2.5; opacity:1; }
+  /* 连线带箭头：方向 = 虚拟 Key → 策略 → 真实 Key */
+  #ov-links path { fill:none; stroke:var(--dim); stroke-width:1.5; opacity:.55; marker-end:url(#ov-arrow); }
+  #ov-arrow path { fill:var(--dim); }
+  #ov-links path.hl { stroke:var(--accent); stroke-width:2.5; opacity:1; marker-end:url(#ov-arrow-hl); }
+  #ov-arrow-hl path { fill:var(--accent); }
   #ov-links path.dim { opacity:.08; }
-  .ov-col { flex:1; padding:12px 16px 16px; display:flex; flex-direction:column; gap:8px; min-width:0; }
+  .ov-col { flex:1; padding:10px 14px 14px; display:flex; flex-direction:column; gap:6px; min-width:0; }
   .ov-col + .ov-col { border-left:1px dashed var(--line); }
-  .ov-col-hd { font-size:12px; color:var(--dim); padding-bottom:4px; }
-  .ov-node { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; position:relative; z-index:1; transition:opacity .15s; }
-  .ov-node b { display:block; font-size:13px; }
+  .ov-col-hd { font-size:11px; font-weight:600; color:var(--dim); padding-bottom:2px; }
+  .ov-node { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:5px 10px; cursor:pointer; position:relative; z-index:1; transition:opacity .15s; }
+  .ov-node b { display:block; font-size:12px; }
   .ov-node b em { font-style:normal; font-size:10px; color:var(--accent); margin-left:4px; }
   .ov-node span { font-size:11px; color:var(--dim); display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .ov-node.hl { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
   .ov-node.dim { opacity:.3; }
-  .ov-node.warn { border-color:#a06a20; }
+  .ov-node.warn { border-color:var(--warn); }
   .ov-node.ov-live { border-color:var(--accent); }
   .ov-node.ov-live::before { content:''; position:absolute; left:-4px; top:50%; width:6px; height:6px; margin-top:-3px; border-radius:50%; background:var(--accent); animation:ovBreathe 1.2s ease-in-out infinite; }
   @keyframes ovBreathe { 0%,100%{opacity:.35; transform:scale(.8)} 50%{opacity:1; transform:scale(1.25)} }
   .ov-node.ov-add { border-style:dashed; text-align:center; }
   .ov-node.ov-add b { color:var(--accent); }
+  /* 未使用的真实 Key 默认折叠成一行，点开才展开 */
+  .ov-more { font-size:11px; color:var(--dim); cursor:pointer; padding:4px 10px; border:1px dashed var(--line); border-radius:8px; text-align:center; user-select:none; }
+  .ov-more:hover { color:var(--text); border-color:var(--accent); }
   .ov-empty { display:flex; flex-direction:column; gap:12px; width:100%; max-width:520px; margin:24px auto; }
-  .ov-step { display:flex; align-items:center; gap:12px; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 16px; cursor:pointer; }
+  .ov-step { display:flex; align-items:center; gap:12px; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 14px; cursor:pointer; }
   .ov-step:hover { border-color:var(--accent); }
-  .ov-step-n { width:26px; height:26px; border-radius:50%; border:1px solid var(--line); display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--dim); flex:none; }
-  .ov-step b { display:block; font-size:14px; }
+  .ov-step-n { width:22px; height:22px; border-radius:50%; border:1px solid var(--line); display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--dim); flex:none; }
+  .ov-step b { display:block; font-size:12px; }
   .ov-step span { font-size:11px; color:var(--dim); }
   .ov-step-go { margin-left:auto; color:var(--accent); font-size:12px; white-space:nowrap; }
   .wf-row { display:flex; gap:10px; align-items:center; padding:10px; border-top:1px solid var(--line); cursor:pointer; }
@@ -227,28 +283,48 @@
   .wf-token .tok-line { display:grid; grid-template-columns:6ch 22ch 26ch 21ch auto; column-gap:5px; align-items:baseline; }
   .wf-token .tok-line > span { white-space:nowrap; overflow:hidden; }
   .wf-token .tok-nested { display:flex; padding-left:12px; } /* 嵌套行长标签不参与列对齐 */
-  /* 小时柱状图：本期(accent) vs 上周同期(line)，双条并列 */
-  .st-chart { display:flex; align-items:flex-end; gap:2px; padding:4px 0 0; overflow-x:auto; border-bottom:1px solid var(--line); }
-  .st-chart .col { display:flex; flex-direction:column; align-items:center; flex:1; min-width:16px; }
-  .st-chart i { width:5px; min-height:1px; border-radius:1px 1px 0 0; }
-  .st-chart .cur { background:var(--accent); }
-  .st-chart .prev { background:var(--dim); opacity:.55; }
-  .st-chart .bars { display:flex; align-items:flex-end; gap:1px; }
-  .st-chart .x { font-size:9px; color:var(--dim); height:12px; line-height:12px; font-family:ui-monospace,monospace; }
+  /* 统计折线图：固定高度 110px；纵轴刻度在左、横轴刻度带在底（HTML 定位，文字不随宽度缩放变形） */
+  .st-plot { display:grid; grid-template-columns:56px 1fr; grid-template-rows:110px 16px; margin:4px 0 2px; }
+  .st-y { grid-area:1/1; position:relative; font:10px ui-monospace,monospace; color:var(--dim); }
+  .st-y span { position:absolute; right:6px; transform:translateY(-50%); white-space:nowrap; }
+  .st-curve { grid-area:1/2; position:relative; border-bottom:1px solid var(--line); }
+  .st-curve svg { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+  .st-grid { position:absolute; left:0; right:0; border-top:1px dashed var(--line); opacity:.7; }
+  .st-x { grid-area:2/2; position:relative; font:10px ui-monospace,monospace; color:var(--dim); }
+  .st-x span { position:absolute; top:2px; transform:translateX(-50%); white-space:nowrap; }
+  .st-x span:first-child { transform:none; }
+  .st-x span:last-child { transform:translateX(-100%); }
+  .st-dot { position:absolute; width:5px; height:5px; margin:-2.5px 0 0 -2.5px; border-radius:50%; background:var(--accent); }
+  .st-peak { position:absolute; transform:translate(-50%,-100%); font:10px ui-monospace,monospace; color:var(--accent); white-space:nowrap; }
+  .st-now { position:absolute; top:0; bottom:0; border-left:1px dashed var(--dim); opacity:.8; }
+  .st-tools { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:2px 0 2px; }
+  .st-tools .legend { margin-left:auto; display:flex; gap:10px; font-size:10px; color:var(--dim); white-space:nowrap; }
+  .legend i { display:inline-block; width:12px; height:2px; vertical-align:middle; margin-right:3px; }
+  .legend i.dash { border-top:1px dashed currentColor; background:none !important; height:0; }
   /* viewer 式 cache 命中率进度条 */
   .cache-bar { display:inline-block; width:46px; height:6px; border-radius:3px; background:var(--line); overflow:hidden; vertical-align:middle; }
   .cache-bar i { display:block; height:100%; }
   .wf-scale { display:flex; justify-content:space-between; font-size:10px; color:var(--dim); font-family:ui-monospace,monospace; padding:2px 10px; }
   /* 底部抽屉 */
   /* 右侧详情面板：不遮挡日志列表，左侧列表仍可滚动点击 */
-  #klog-drawer { position:fixed; right:0; top:0; bottom:0; width:52vw; max-width:960px; z-index:60; background:var(--panel); border-left:1px solid var(--accent); display:flex; flex-direction:row; box-shadow:-8px 0 30px rgba(0,0,0,.4); }
+  #klog-drawer { position:fixed; right:0; top:0; bottom:0; width:52vw; max-width:960px; z-index:60; background:var(--panel); border-left:1px solid var(--accent); display:flex; flex-direction:row; box-shadow:var(--shadow-lg); }
   #klog-drawer.hidden { display:none; }
   #klog-drawer.fullscreen { width:100vw; max-width:none; }
   #drawer-resize { width:6px; cursor:ew-resize; flex-shrink:0; } /* 左边缘拖拽调节宽度 */
   #drawer-resize:hover { background:var(--accent); }
   .drawer-inner { flex:1; min-width:0; display:flex; flex-direction:column; }
-  .drawer-bar { display:flex; align-items:center; gap:8px; padding:6px 12px; border-bottom:1px solid var(--line); }
+  .drawer-bar { display:flex; align-items:center; gap:8px; padding:4px 12px; border-bottom:1px solid var(--line); flex-shrink:0; }
   .drawer-body { flex:1; overflow:auto; padding:0 14px 10px; } /* 顶部不留 padding，吸顶无缝 */
+  /* 抽屉标签页：响应(默认) | 请求 | SSE | Headers；响应体不再被上千条消息压到底部 */
+  .tabs { display:flex; gap:2px; border-bottom:1px solid var(--line); padding:0 12px; flex-shrink:0; }
+  .tabs button { background:none; border:none; border-bottom:2px solid transparent; color:var(--dim); padding:5px 10px; cursor:pointer; font-size:12px; }
+  .tabs button.on { color:var(--text); border-bottom-color:var(--accent); }
+  .tabs button i { font-style:normal; font-size:10px; color:var(--dim); margin-left:3px; font-variant-numeric:tabular-nums; }
+  .drawer-sum { position:sticky; top:0; z-index:7; background:var(--panel); padding:6px 0; border-bottom:1px solid var(--line); margin-bottom:4px; }
+  /* 连续同角色消息组：默认折叠成一行，点击展开；不预先渲染组内节点 */
+  .msg-run-hdr { display:flex; align-items:center; gap:8px; padding:3px 8px; border-left:3px solid var(--dim); border-radius:4px; background:var(--bg); cursor:pointer; font-size:11px; color:var(--dim); margin:3px 0; user-select:none; }
+  .msg-run-hdr:hover { color:var(--text); }
+  .msg-run-body { padding-left:10px; }
   .bar-wrap { display:inline-block; background:var(--line); border-radius:3px; height:10px; min-width:2px; }
   .bar { display:block; height:10px; background:var(--accent); border-radius:3px; }
   .klog-layout { display:flex; gap:14px; align-items:flex-start; }
@@ -261,14 +337,35 @@
   .klog-item .sub { font-size:12px; color:var(--dim); margin-top:2px; }
   .live-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--warn); animation:pulse 1s infinite; }
   @keyframes pulse { 50% { opacity:.3; } }
-  .prov-row { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--line); }
-  .prov-row b { font-size:13px; }
-  a.small { color: var(--accent); text-decoration: none; font-size: 12px; padding: 3px 8px; }
+  .prov-row { display:flex; align-items:center; gap:10px; padding:4px 12px; border-bottom:1px solid var(--line); }
+  .prov-row b { font-size:12px; }
+  a.small { color: var(--accent); text-decoration: none; font-size: 11px; padding: 0 4px; }
   .fill-arrow { color: var(--accent); font-size: 15px; font-weight: bold; text-decoration: none; padding: 0 4px; }
   .up-card table { margin:0; }
   .up-card td, .up-card th { border-bottom:1px solid var(--line); }
-  .key-add { display:flex; gap:6px; padding:8px 14px; background:var(--bg); }
-  .key-add input { font-size:12px; }
+  .toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 8px; }
+  .tb-group { display:inline-flex; align-items:center; gap:6px; padding-left:10px; border-left:1px solid var(--line); }
+  /* 卡片网格：横向排列自动换行；信息与操作集中在卡内，编辑原位展开不跳页 */
+  .cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:8px; }
+  .cards.keys { grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); margin:8px 12px; }
+  .card { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; display:flex; flex-direction:column; gap:4px; min-width:0; cursor:pointer; }
+  .card:hover { border-color:var(--dim); }
+  .card.focus { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent); }
+  .card.off { opacity:.55; } /* 停用的实体整体弱化，hover 恢复亮度便于操作 */
+  .card.off:hover { opacity:1; }
+  .card-hd { display:flex; align-items:center; gap:8px; min-width:0; }
+  .card-hd b { font-size:12px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .card-hd code { font-size:11px; }
+  .spacer { flex:1; }
+  .card-kv { display:grid; grid-template-columns:44px minmax(0,1fr); gap:2px 8px; font-size:11px; align-items:center; }
+  .card-kv > span:nth-child(odd) { color:var(--dim); font-size:10px; }
+  .card-kv > span:nth-child(even) { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .card-kv code { font-size:11px; }
+  .card-ft { display:flex; align-items:center; gap:6px; margin-top:2px; }
+  .card.add { border-style:dashed; align-items:center; justify-content:center; gap:2px; min-height:112px; color:var(--dim); cursor:pointer; background:none; text-align:center; }
+  .card.add:hover { color:var(--accent); border-color:var(--accent); }
+  .card.add b { font-size:12px; font-weight:500; }
+  .cards.keys .card.add { min-height:52px; } /* Key 卡片只有两行，新建卡不必撑到虚拟 Key 卡的高度 */
 </style>
 </head>
 <body>
@@ -315,12 +412,15 @@
   <h2 class="page">服务商与真实 Key</h2>
   <p class="desc">列表来自 modellink 模型服务商（<span id="ml-count">0</span> 个）。给服务商添加第一个 Key 即视为添加该服务商；一个服务商可挂多个 Key。</p>
   <div class="panel">
-    <div class="row"><input id="ml-search" placeholder="搜索模型服务商…" oninput="renderProvList()" style="width:240px">
+    <!-- 工具栏分三组：搜索 | 同步·版本·外链 | 自定义服务商（主操作） -->
+    <div class="toolbar"><input id="ml-search" placeholder="搜索模型服务商…" oninput="renderProvList()" style="width:240px">
       <span style="flex:1"></span>
+      <span class="tb-group">
       <button class="small" onclick="syncCatalog()">⟳ 同步服务商</button>
       <span class="hint" id="ml-ver"></span>
       <a class="small" href="https://goroutined.github.io/modellink/#/providers" target="_blank">模型服务商 ↗</a>
-      <button class="small" onclick="toggleCustomForm()">+ 自定义服务商</button></div>
+      </span>
+      <button class="primary" onclick="toggleCustomForm()">+ 自定义服务商</button></div>
     <div id="custom-form" class="hidden" style="background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px;margin:8px 0">
       <div class="row"><input id="up-name" placeholder="服务商名称">
         <span style="flex:1"></span>
@@ -334,7 +434,7 @@
       <input class="proto-url" placeholder="该协议的 BaseURL" style="flex:1;min-width:220px">
       <button class="small" onclick="this.parentElement.remove()">移除</button>
     </div>
-    <div id="prov-list"></div>
+    <div id="prov-list"><span class="hint">加载中…</span></div>
   </div>
 </section>
 
@@ -342,15 +442,10 @@
 <section id="page-policies" class="hidden">
   <h2 class="page">转发策略</h2>
   <p class="desc">决定虚拟 Key 的真实调用路径。当前支持 fixed：固定映射到一个真实 Key。轮询/随机/比例等策略规划中。</p>
-  <div class="panel"><h3>添加 fixed 策略</h3>
-    <div class="row" style="align-items:flex-start">
-      <div style="display:flex;flex-direction:column"><input id="pol-name" placeholder="策略名">
-        <div class="hint" id="pol-suggest"></div></div>
-      <select id="pol-key"></select>
-      <button class="primary" onclick="addPolicy()">添加</button></div>
-  </div>
-  <div class="panel"><h3>已配置策略</h3>
-    <table><thead><tr><th>ID</th><th>名称</th><th>类型</th><th>映射到</th><th>操作</th></tr></thead><tbody id="pol-body"></tbody></table>
+  <div class="panel">
+    <!-- 卡片网格：每张卡自带信息与操作，编辑原位展开；末尾为「新建」卡片 -->
+    <div class="sect"><h3>已配置策略</h3>
+    <div class="cards" id="pol-cards"></div>
   </div>
 </section>
 
@@ -358,23 +453,17 @@
 <section id="page-vkeys" class="hidden">
   <h2 class="page">虚拟 Key</h2>
   <p class="desc">对外发放：客户端 baseURL 与 Key 按下方信息填写。转发规则由绑定的调用策略决定。</p>
-  <div class="panel"><h3>接入信息</h3>
-    <div class="row">
-      <span>BaseURL：<code id="vk-baseurl"></code></span>
+  <div class="panel">
+    <!-- 接入卡片：BaseURL 大字 + 协议路径，客户端照抄即可 -->
+    <div class="sect"><h3>接入信息</h3>
+    <div class="conn">
+      <span class="conn-k">BaseURL</span><code id="vk-baseurl" class="conn-url"></code>
       <button class="small" onclick="copyText($('vk-baseurl').textContent,this)">复制</button>
-      <span class="hint">openai-compatible / openai-responses 在 <code>/v1</code> 下，anthropic-compatible 在 <code>/anthropic</code> 下</span>
+      <span class="conn-k">协议路径</span><span class="hint">openai-compatible / openai-responses 在 <code>/v1</code> 下；anthropic-compatible 在 <code>/anthropic</code> 下</span>
     </div>
-  </div>
-  <div class="panel"><h3>创建</h3>
-    <div class="row">
-      <input id="vk-name" placeholder="名称/用途">
-      <select id="vk-policy"></select>
-      <button class="primary" onclick="addVirtualKey()">创建</button>
-      <span class="hint">虚拟 key 留空自动生成</span>
     </div>
-  </div>
-  <div class="panel"><h3>已发放</h3>
-    <table><thead><tr><th>ID</th><th>Key</th><th>名称</th><th>调用策略</th><th>今日调用</th><th>状态</th><th>操作</th></tr></thead><tbody id="vk-body"></tbody></table>
+    <div class="sect"><h3>已发放</h3>
+    <div class="cards" id="vk-cards"></div>
   </div>
 </section>
 
@@ -382,23 +471,34 @@
 <section id="page-settings" class="hidden">
   <h2 class="page">设置</h2>
   <p class="desc">日志清理采用水位线：超过 X 才清理，一次清到 Y；超龄必删。统计独立存储，不受日志清理影响。</p>
-  <div class="panel"><h3>管理令牌</h3>
-    <div class="row"><input id="token" placeholder="留空表示本机免鉴权" style="width:280px"><span class="hint">仅当服务以 <code>-admin-token</code>（或环境变量 <code>MODELGATE_ADMIN_TOKEN</code>）启动时需要填写：值与启动参数一致，用于控制台与 /api 的鉴权（Bearer）。本机自用通常不需要。</span></div>
+  <div class="panel">
+    <div class="sect"><h3>管理令牌</h3>
+    <!-- 表单网格：标签列定宽，三组设置的输入框上下对齐 -->
+    <div class="form-grid">
+      <label for="token">管理令牌</label>
+      <div><input id="token" placeholder="留空表示本机免鉴权" style="width:280px" autocomplete="off">
+        <div class="hint">仅当服务以 <code>-admin-token</code>（或环境变量 <code>MODELGATE_ADMIN_TOKEN</code>）启动时需要填写：值与启动参数一致，用于控制台与 /api 的鉴权（Bearer）。本机自用通常不需要。</div></div>
+    </div>
   </div>
-  <div class="panel"><h3>日志清理</h3>
-    <div class="row"><label>高水位（条数，超过触发）</label><input id="s-log-high" type="number" style="width:120px"></div>
-    <div class="row"><label>低水位（清理到）</label><input id="s-log-low" type="number" style="width:120px"></div>
-    <div class="row"><label>最大保留天数（0 不限）</label><input id="s-log-age" type="number" style="width:120px"></div>
+    <div class="sect"><h3>日志清理</h3>
+    <div class="form-grid">
+      <label for="s-log-high">高水位（条数，超过触发）</label><input id="s-log-high" type="number">
+      <label for="s-log-low">低水位（清理到）</label><input id="s-log-low" type="number">
+      <label for="s-log-age">最大保留天数（0 不限）</label><input id="s-log-age" type="number">
+    </div>
   </div>
-  <div class="panel"><h3>统计保留期</h3>
-    <div class="row"><label>小时粒度保留天数</label><input id="s-hour-ret" type="number" style="width:120px"></div>
-    <div class="row"><label>天粒度保留天数</label><input id="s-day-ret" type="number" style="width:120px"></div>
+    <div class="sect"><h3>统计保留期</h3>
+    <div class="form-grid">
+      <label for="s-hour-ret">小时粒度保留天数</label><input id="s-hour-ret" type="number">
+      <label for="s-day-ret">天粒度保留天数</label><input id="s-day-ret" type="number">
+    </div>
   </div>
-  <div class="row">
+    <div class="sect"><div class="row" style="margin:0">
     <button class="primary" onclick="saveSettings()">保存设置</button>
+    <span class="hint">以下为维护操作，会改动数据：</span>
     <button class="small" onclick="runCleanup()">立即清理</button>
     <button class="small" title="从调用日志全量重算统计表；费用沿用每条调用发生时已记录的值，不会用当前价格重算历史，原始日志不受影响" onclick="rebuildStats()">重建统计</button>
-    <span class="muted" id="s-status"></span></div>
+    <span class="muted" id="s-status"></span></div></div>
 </section>
 
 <!-- ============ 统计（hash: #/stats 总览, #/stats/<id> 详情） ============ -->
@@ -441,18 +541,34 @@
       </div>
       </span>
       <label><input type="checkbox" id="klog-live" checked onchange="klogToggleLive()"> 实时监听</label>
-      <span style="flex:1"></span>
-      <span class="muted" id="klog-ws">未连接</span>
-    </div>
+      <!-- 图例并入页头行，省一行 -->
+      <!-- 图例放左侧：右侧会被详情抽屉盖住 -->
     <div class="wf-legend">
       <span><i class="ph-first"></i>First token</span>
       <span><i class="ph-think"></i>Thinking</span>
       <span><i class="ph-out"></i>Output</span>
       <span><i class="ph-tool"></i>Toolcall</span>
     </div>
+      <span style="flex:1"></span>
+      <span class="muted" id="klog-ws">未连接</span>
+    </div>
     <div class="panel"><div id="klog-rows"></div></div>
   </div>
 </section>
+
+<!-- 卡片编辑弹窗：点卡片或「＋ 新建」弹出，编辑 / 删除 / 新建共用 -->
+<div id="cm" onclick="if(event.target===this)cmClose()">
+  <div class="box">
+    <h3 id="cm-title"></h3>
+    <div id="cm-body"></div>
+    <div class="row cm-foot">
+      <span id="cm-del"></span>
+      <span class="spacer"></span>
+      <button class="small" onclick="cmClose()">取消</button>
+      <button class="primary" id="cm-save" onclick="cmSave()">保存</button>
+    </div>
+  </div>
+</div>
 
 <!-- 删除等危险操作的自定义确认弹层 -->
 <div id="cf" onclick="if(event.target===this)cfClose()">
@@ -460,8 +576,8 @@
     <h3 id="cf-title">确认删除？</h3>
     <p id="cf-msg"></p>
     <div class="row" style="justify-content:flex-end">
-      <button class="small" onclick="cfClose()">取消</button>
-      <button class="primary" id="cf-ok" style="background:var(--warn)">确认</button>
+      <button class="small" id="cf-cancel" onclick="cfClose()">取消</button>
+      <button class="primary" id="cf-ok" style="background:var(--danger)">确认</button>
     </div>
   </div>
 </div>
@@ -496,11 +612,6 @@ const api = (path, opt={}) => fetch(path, {...opt, headers:{...H(), ...(opt.body
 });
 const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // 行内编辑：展开/收起紧随数据行的编辑行
-function toggleRowEdit(id){
-  const el = $(id);
-  el.classList.toggle('hidden');
-  if (!el.classList.contains('hidden')) el.querySelector('input,select')?.focus();
-}
 // 金额自适应精度：0.000034 不再显示成 0.0000
 const fmtCNY = v => v==null||v===0 ? '0' : v>=1 ? v.toFixed(2) : v>=0.01 ? v.toFixed(4) : v>=0.0001 ? v.toFixed(5) : v.toExponential(2);
 // 复制并给按钮短暂反馈
@@ -510,7 +621,20 @@ function copyText(t, btn){
 }
 // 自定义确认弹层：替代原生 confirm，msg 可说明影响面
 let cfCb = null;
-function cfAsk(title, msg, cb){ $('cf-title').textContent=title; $('cf-msg').textContent=msg||''; cfCb=cb; $('cf').classList.add('open'); }
+function cfAsk(title, msg, cb){
+  $('cf-title').textContent=title; $('cf-msg').textContent=msg||''; cfCb=cb;
+  $('cf-ok').textContent='确认'; $('cf-ok').style.background='var(--danger)';
+  $('cf-ok').disabled=false;
+  $('cf-cancel').classList.remove('hidden');
+  $('cf').classList.add('open');
+}
+// 说明型弹层：只有「知道了」，无回调；用于「被引用、需先处理」的清单
+function cfInfo(title, msgHTML){
+  $('cf-title').textContent=title; $('cf-msg').innerHTML=msgHTML||''; cfCb=null;
+  $('cf-ok').textContent='知道了'; $('cf-ok').style.background='var(--accent)';
+  $('cf-cancel').classList.add('hidden');
+  $('cf').classList.add('open');
+}
 function cfClose(){ $('cf').classList.remove('open'); cfCb=null; }
 $('cf-ok').onclick = ()=>{ const cb=cfCb; cfClose(); cb&&cb(); };
 // 人性化时长：1240 -> "1.24s"
@@ -518,12 +642,14 @@ const fmtDur = ms => { if(ms==null) return '-'; if(ms<1000) return ms+'ms'; retu
 const fmtMS = ms => { const d=new Date(ms); return d.toLocaleTimeString('zh-CN',{hour12:false})+'.'+String(d.getMilliseconds()).padStart(3,'0'); };
 
 // ---------- hash 路由：#/vkeys #/keys #/policies #/settings #/stats[/id] #/logs[/id] ----------
-let route = {page:'overview', id:null};
+let route = {page:'overview', id:null, action:null};
 function go(hash){ if (location.hash === hash) routeRender(); else location.hash = hash; }
 function parseHash(){
   const h = (location.hash||'').replace(/^#\//,'').split('/');
   const page = ['overview','vkeys','keys','policies','settings','stats','logs'].includes(h[0]) ? h[0] : 'overview';
-  route = {page, id: h[1] ? +h[1] : null};
+  // 三段式直达：#/页面/edit/<id> 打开某张卡片的编辑；#/页面/new 打开新建卡片
+  const action = h[1]==='edit' || h[1]==='new' ? h[1] : null;
+  route = {page, id: action==='edit' ? +h[2] : (action ? null : (h[1] ? +h[1] : null)), action};
 }
 function routeRender(){
   parseHash();
@@ -534,11 +660,176 @@ function routeRender(){
   ovLeave();
   if (route.page==='overview') renderOverview();
   if (route.page==='vkeys') loadVirtualKeys();
+  if (route.page==='policies') loadPolicies(); // 每次进入重渲染：被使用关系与直达编辑状态都基于最新数据
   if (route.page==='stats') renderStats();
   if (route.page==='logs') renderLogs();
   if (route.page==='settings') loadSettings();
+  if (route.page==='keys' && route.action) cardFocusApply('keys');
 }
 window.addEventListener('hashchange', routeRender);
+// ---------- 卡片弹窗：新建 / 编辑 / 删除共用一个居中弹窗；卡片本身只放标准信息 + 开关 ----------
+let vkList = [], polList = []; // 最近一次渲染的列表，弹窗按 id 取实体
+const CM = { type:null, id:null, upId:null, save:null }; // 弹窗上下文
+const cmErr = e => alert(e.message || String(e));
+function cmOpen(title, bodyHTML, saveLabel, delHTML, ctx){
+  Object.assign(CM, {type:null, id:null, upId:null, save:null}, ctx||{});
+  $('cm-title').textContent = title;
+  $('cm-body').innerHTML = bodyHTML;
+  $('cm-del').innerHTML = delHTML || '';
+  $('cm-save').textContent = saveLabel;
+  $('cm').classList.add('open');
+  const first = $('cm-body').querySelector('input:not([type=checkbox]),select'); if (first) first.focus();
+}
+function cmClose(){ $('cm').classList.remove('open'); }
+function cmSave(){ if (CM.save) CM.save(); }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') cmClose(); });
+// 点卡片：已有实体 → 编辑弹窗；id 为空 → 新建弹窗（与「＋ 新建」虚线卡同一入口）
+function cardClick(type, id, upId){
+  if (type==='vkey') vkeyModal(id); else if (type==='policy') policyModal(id); else ukeyModal(id, upId);
+}
+// 虚拟 Key 弹窗：名称 + 策略；启停在卡片开关上，弹窗里不再重复
+function vkeyModal(id){
+  const v = vkList.find(x=>x.id===id) || null;
+  const polOpts = polList.map(p=>`<option value="${p.id}" ${p.id===v?.policy_id?'selected':''}>${esc(p.name)}</option>`).join('')
+    || '<option value="">（先创建策略）</option>';
+  const body = (v ? '<div class="form-grid"><label>Key</label><span><code>'+esc(v.key)+'</code> <button class="small" onclick="copyText(\''+esc(v.key)+'\',this)">复制</button></span></div>' : '')
+    + '<div class="form-grid"><label for="cm-name">名称</label><input id="cm-name" value="'+esc(v?.name||'')+'" placeholder="名称/用途">'
+    + '<label for="cm-policy">调用策略</label><select id="cm-policy">'+polOpts+'</select></div>'
+    + (v ? '<div class="hint">启停在卡片右上角的开关上切换；Key 值不修改，换值请新建。</div>' : '<div class="hint">Key 自动生成，创建后复制给客户端。</div>');
+  cmOpen(v ? '编辑虚拟 Key' : '新建虚拟 Key', body, v?'保存':'创建',
+    v ? '<button class="danger" onclick="delVkey('+v.id+')">删除</button>' : '',
+    { type:'vkey', id, save: async ()=>{
+      const name = $('cm-name').value.trim(), policy_id = +$('cm-policy').value;
+      if (!policy_id){ alert('先创建策略'); return; }
+      try{
+        if (v) await api('/api/virtual-keys/'+v.id,{method:'PUT',body:JSON.stringify({key:v.key,name,policy_id,enabled:v.enabled})});
+        else await api('/api/virtual-keys',{method:'POST',body:JSON.stringify({key:randKey(),name,policy_id})});
+        cmClose(); loadVirtualKeys();
+      }catch(e){ cmErr(e); }
+    }});
+}
+// 策略类型注册表：每种类型提供自己的配置表单；以后新增类型（改写请求/响应、负载策略）只在这里加一项，
+// 弹窗骨架、卡片、保存流程都不用动；数据层 type + config 本来就是通用的
+const POLICY_TYPES = {
+  fixed: { label:'固定映射', hint:'固定转发到一把真实 Key', fields: curKey => '<label for="cm-key">真实 Key</label><select id="cm-key">'+keyOpts(curKey)+'</select>' },
+};
+// 真实 Key 下拉项：#id 服务商 · 备注
+function keyOpts(sel){
+  return keys.map(k=>{ const u = ups.find(x=>x.name===k.upstream); return `<option value="${k.id}" ${k.id===sel?'selected':''}>#${k.id} ${esc(u?.note||k.upstream)} · ${esc(k.label||'无备注')}</option>`; }).join('')
+    || '<option value="">（先添加真实 Key）</option>';
+}
+function policyModal(id){
+  const p = polList.find(x=>x.id===id) || null;
+  let curKey = null; try{ curKey = JSON.parse(p?.config||'{}').upstream_key_id || null; }catch{}
+  const pt = POLICY_TYPES[p?.type] || POLICY_TYPES.fixed;
+  const body = '<div class="form-grid">'
+    + '<label for="cm-name">名称</label><input id="cm-name" value="'+esc(p?.name||'')+'" placeholder="'+(p?'':'留空则用推荐名')+'">'
+    + '<label>类型</label><div class="seg"><button class="on" type="button">'+pt.label+'</button></div>'
+    + pt.fields(curKey)
+    + (p ? '' : '<span></span><span class="hint" id="cm-suggest"></span>')
+    + '</div>'
+    + '<div class="hint">'+pt.hint+'；更多类型（改写请求 / 响应、负载策略）规划中。</div>';
+  cmOpen(p ? '编辑转发策略' : '新建转发策略', body, p?'保存':'创建',
+    p ? '<button class="danger" onclick="delPolicy('+p.id+')">删除</button>' : '',
+    { type:'policy', id, save: async ()=>{
+      const name = $('cm-name').value.trim() || polSuggestName();
+      const keyId = +(($('cm-key')||{}).value || 0);
+      if (!keyId){ alert('先添加真实 Key'); return; }
+      try{
+        const payload = {name, type:'fixed', config:JSON.stringify({upstream_key_id:keyId})};
+        if (p) await api('/api/policies/'+p.id,{method:'PUT',body:JSON.stringify(payload)});
+        else await api('/api/policies',{method:'POST',body:JSON.stringify(payload)});
+        cmClose(); loadPolicies(); loadVirtualKeys();
+      }catch(e){ cmErr(e); }
+    }});
+  refreshPolSuggest();
+}
+// 真实 Key 弹窗：备注（启停在卡片开关上）；id 为空时按 upId 新建到该服务商
+function ukeyModal(id, upId){
+  const k = id ? keys.find(x=>x.id===id) : null;
+  const u = ups.find(x=>x.name===k?.upstream) || ups.find(x=>x.id===upId);
+  const masked = k ? (k.key.length>8 ? k.key.slice(0,4)+'****'+k.key.slice(-4) : '****') : '';
+  const body = (k ? '<div class="form-grid"><label>Key</label><span><code>'+masked+'</code></span><label>服务商</label><span>'+esc(u?.note||k.upstream)+'</span></div>' : '')
+    + '<div class="form-grid">'
+    + (k ? '' : '<label for="cm-key">真实 API Key</label><input id="cm-key" placeholder="sk-…" autocomplete="off">')
+    + '<label for="cm-label">备注</label><input id="cm-label" value="'+esc(k?.label||'')+'" placeholder="如 账号A">'
+    + '</div>'
+    + '<div class="hint">'+(k ? 'Key 值不可改，更换请删除后重新添加；启停在卡片开关上切换。' : '添加到服务商「'+esc(u?.note||'')+'」，Key 只用于转发，界面只显示脱敏值。')+'</div>';
+  cmOpen(k ? '编辑真实 Key' : '添加真实 Key', body, k?'保存':'添加',
+    k ? '<button class="danger" onclick="delUkey('+k.id+')">删除</button>' : '',
+    { type:'ukey', id, upId, save: async ()=>{
+      const label = $('cm-label').value.trim();
+      try{
+        if (k) await api('/api/upstream-keys/'+k.id,{method:'PUT',body:JSON.stringify({key:k.key,label,enabled:k.enabled})});
+        else { const key = $('cm-key').value.trim(); if(!key){ alert('请填写真实 API Key'); return; }
+          await api('/api/upstream-keys',{method:'POST',body:JSON.stringify({upstream_id:upId,key,label})}); }
+        cmClose(); loadUpKeys();
+      }catch(e){ cmErr(e); }
+    }});
+}
+// ---------- 删除保护：引用链 vKey → 策略 → Key → 服务商，从后往前解 ----------
+// 后端对每一层都拦截（409 + 说明）；这里用页面已加载的数据提前检查，被引用就不弹删除确认，
+// 改为说明清单，清单里的名字可点进对应弹窗处理
+const refUL = items => items.length ? '<ul>'+items.join('')+'</ul>' : '';
+const refLink = (label, fn) => '<a href="javascript:void(0)" onclick="cfClose();'+fn+'">'+esc(label)+'</a>';
+function delUpstream(id){
+  const u = ups.find(x=>x.id===id); if (!u) return;
+  const ks = keys.filter(k=>k.upstream===u.name);
+  if (!ks.length){ del('/api/upstreams/'+id, loadUpKeys, '移除服务商「'+(u.note||u.name)+'」？它的协议与模型配置会一并移除，历史调用记录保留。'); return; }
+  const refs = polList.filter(p=>ks.some(k=>ovPolKeyID(p)===k.id));
+  const keyItems = ks.map(k=>'<li>Key <code>'+esc(k.label||('#'+k.id))+'</code> '+refLink('去处理','ukeyModal('+k.id+')')+'</li>');
+  const polItems = refs.map(p=>'<li>策略 '+refLink(p.name,'policyModal('+p.id+')')+'</li>');
+  cfInfo('暂时无法移除服务商',
+    '<b>「'+esc(u.note||u.name)+'」下还有 '+ks.length+' 个 Key，需先删除后才能移除</b>'+refUL(keyItems)
+    + (refs.length ? '<div>其中 Key 被以下策略引用，删 Key 前需先修改策略的映射或删除策略：</div>'+refUL(polItems) : ''));
+}
+function delUkey(id){
+  const k = keys.find(x=>x.id===id); if (!k) return;
+  const refs = polList.filter(p=>ovPolKeyID(p)===id);
+  if (refs.length){
+    const vks = [...new Set(refs.flatMap(p=>vkList.filter(v=>v.policy_id===p.id).map(v=>v.name||v.key)))];
+    cfInfo('暂时无法删除 Key',
+      '<b>Key「'+esc(k.label||('#'+id))+'」正被策略引用</b>请先修改策略的映射或删除策略：'
+      + refUL(refs.map(p=>'<li>策略 '+refLink(p.name,'policyModal('+p.id+')')+'</li>'))
+      + (vks.length ? '<div>这些策略正被 vKey「'+esc(vks.join('、'))+'」使用，删策略前需先改它们的调用策略或删除它们。</div>' : ''));
+    return;
+  }
+  cmClose();
+  del('/api/upstream-keys/'+id, loadUpKeys, '删除真实 Key「'+esc(k.label||('#'+id))+'」？该 Key 的历史调用记录会保留，真实 Key 维度的统计会一并清除。');
+}
+function delPolicy(id){
+  const p = polList.find(x=>x.id===id); if (!p) return;
+  const used = vkList.filter(v=>v.policy_id===id);
+  if (used.length){
+    cfInfo('暂时无法删除策略',
+      '<b>策略「'+esc(p.name)+'」正被虚拟 Key 引用</b>请先修改这些 vKey 的调用策略或删除它们：'
+      + refUL(used.map(v=>'<li>vKey '+refLink(v.name||v.key,'vkeyModal('+v.id+')')+'</li>')));
+    return;
+  }
+  cmClose();
+  del('/api/policies/'+id, ()=>{loadPolicies();loadVirtualKeys();}, '删除策略「'+esc(p.name)+'」？');
+}
+function delVkey(id){
+  const v = vkList.find(x=>x.id===id); if (!v) return;
+  cmClose();
+  del('/api/virtual-keys/'+id, loadVirtualKeys, '删除虚拟 Key「'+esc(v.name||v.key)+'」？使用该 Key 的客户端会立即失效，统计立即清除，调用日志在后台清理。');
+}
+// 从总览 / 卡片间跳转到达：目标卡片滚到视野中间并高亮，再直接打开它的编辑弹窗（新建地址则打开新建弹窗）；
+// 地址栏随即去掉 edit/new 段，避免保存后重渲染时反复触发
+function cardFocusApply(page){
+  const {action, id} = route;
+  route.action = null;
+  history.replaceState(null, '', '#/'+page);
+  const type = page==='vkeys' ? 'vkey' : page==='policies' ? 'policy' : 'ukey';
+  const sel = action==='edit'
+    ? (page==='vkeys' ? '#vk-card-'+id : page==='policies' ? '#pol-card-'+id : '#uk-card-'+id)
+    : (page==='vkeys' ? '#vk-card-new' : '#pol-card-new');
+  requestAnimationFrame(()=>{
+    const el = document.querySelector(sel);
+    if (el){ el.classList.add('focus'); el.scrollIntoView({block:'center'}); }
+    if (action==='edit') cardClick(type, id); else if (page==='vkeys') vkeyModal(null); else if (page==='policies') policyModal(null);
+  });
+}
 // 菜单点击 → 导航（hash 变化触发 routeRender）
 document.querySelectorAll('#menu button').forEach(b => b.onclick = () => go('#/'+b.dataset.page));
 // 移动端点菜单后收起抽屉侧栏
@@ -546,6 +837,7 @@ document.querySelector('#menu').addEventListener('click', ()=>document.body.clas
 
 // ---------- 服务商平铺列表：有 Key 的在前，加 Key 即添加 ----------
 let mlProvs = [], ups = [], keys = [];
+let keysLoaded = false; // 首屏 Key 列表是否已到：策略卡片要等它，否则会闪一下「未指向有效 Key」
 async function loadMl(){
   try{
     const r = await api('/api/modellink/providers');
@@ -558,6 +850,7 @@ async function loadMl(){
 }
 async function loadUpKeys(){
   [ups, keys] = await Promise.all([ (async()=>((await api('/api/upstreams'))||[]))(), (async()=>((await api('/api/upstream-keys'))||[]))() ]);
+  keysLoaded = true;
   renderProvList();
   loadPolicies();
 }
@@ -580,10 +873,13 @@ function provBlock(list, name, note, ml){
   if (cURL) links.push(`<a class="small" href="${esc(cURL)}" target="_blank">控制台</a>`);
   if (pURL) links.push(`<a class="small" href="${esc(pURL)}" target="_blank">定价</a>`);
   return `<div class="up-card">
-    <div class="head"><b>${esc(note||name)}</b><span class="muted">${esc(name)} · ${ks.length} 个 Key</span>${goneTag}${protos}
-      ${links.join(' ')} <button class="small" onclick="this.closest('.up-card').querySelector('.models-box').classList.toggle('hidden')">模型 ${models.length}</button>
-      <span style="flex:1"></span>${u.name.startsWith('custom-')?`<button class="small" onclick="toggleEdit(${u.id})">编辑</button>`:'<span class="hint" title="来自 modellink 官方服务商数据，只读并自动同步">官方配置只读</span>'}
-      <button class="small" onclick="del('/api/upstreams/${u.id}',loadUpKeys)">移除</button></div>
+    <div class="head col">
+      <div class="head-main"><b>${esc(note||name)}</b><span class="muted">${ks.length ? ks.length+' 个 Key' : '未添加 Key'}</span>${goneTag}
+        <button class="ghost" onclick="ukeyModal(null,${u.id})">+ 添加 Key</button>
+        <span style="flex:1"></span>${u.name.startsWith('custom-')?`<button class="small" onclick="toggleEdit(${u.id})">编辑服务商</button>`:'<span class="hint" title="来自 modellink 官方服务商数据，只读并自动同步">官方配置只读</span>'}
+        <button class="danger" onclick="delUpstream(${u.id})">移除</button></div>
+      <div class="head-sub"><span>${esc(name)}</span>${protos}${links.join(' ')}<button class="small" onclick="this.closest('.up-card').querySelector('.models-box').classList.toggle('hidden')">模型 ${models.length}</button></div>
+    </div>
     <div id="edit-${u.id}" class="edit-box hidden">
       <div class="row"><label>ID</label><input id="eu-${u.id}-name" value="${esc(u.name)}" style="width:180px">
         <label>显示名</label><input id="eu-${u.id}-note" value="${esc(u.note||'')}" style="width:140px">
@@ -593,22 +889,17 @@ function provBlock(list, name, note, ml){
       <div class="row"><button class="small" onclick="addEditRow(${u.id})">+ 添加协议</button>
         <span style="flex:1"></span><button class="primary" onclick="saveUpstream(${u.id})">保存</button></div>
     </div>
-    ${ks.length ? `<table><tbody>${ks.map(k=>{
+    ${'<div class="cards keys">'+ks.map(k=>{
         const masked = k.key.length>8 ? k.key.slice(0,4)+'****'+k.key.slice(-4) : '****';
-        return `<tr><td>${masked}</td><td>${esc(k.label)}</td><td>${k.enabled?'启用':'停用'}</td><td>
-          <button class="small" onclick="toggleRowEdit('kedit-${k.id}')">编辑</button>
-          <button class="small" onclick="toggleKey(${k.id},${!k.enabled})">${k.enabled?'停用':'启用'}</button>
-          <button class="small" onclick="del('/api/upstream-keys/${k.id}',loadUpKeys)">删除</button></td></tr>
-          <tr id="kedit-${k.id}" class="hidden edit-row"><td colspan="4">
-            <div class="row" style="margin:4px 0"><label>备注</label><input id="ke-${k.id}-label" value="${esc(k.label)}" placeholder="如 账号A" style="width:200px">
-            <label class="switch" title="启用/停用"><input type="checkbox" id="ke-${k.id}-en" ${k.enabled?'checked':''}><i></i></label>
-            <button class="primary" onclick="saveKeyEdit(${k.id})">保存</button>
-            <button class="small" onclick="toggleRowEdit('kedit-${k.id}')">取消</button>
-            <span class="hint">key 值不可改，更换请删除后重新添加</span></div>
-          </td></tr>`;
-      }).join('')}</tbody></table>` : ''}
-    <div class="key-add"><input id="nk-${u.id}-key" placeholder="真实 API Key" style="flex:1;min-width:180px">
-      <input id="nk-${u.id}-label" placeholder="备注（如 账号A）"><button class="primary" onclick="addKeyTo(${u.id})">添加 Key</button></div>
+        // Key 卡片：脱敏 Key + 备注 + 开关一行；点卡片弹窗编辑
+        return '<div class="card'+(k.enabled?'':' off')+'" id="uk-card-'+k.id+'" onclick="cardClick(\'ukey\','+k.id+')">'
+          +'<div class="card-hd"><code>'+masked+'</code>'
+          +'<span class="spacer"></span><span class="muted" style="font-size:11px" title="备注">'+(k.label?esc(k.label):'未填写备注')+'</span>'
+          +'<label class="switch" title="'+(k.enabled?'点击停用':'点击启用')+'" onclick="event.stopPropagation()"><input type="checkbox" '+(k.enabled?'checked':'')+' onchange="toggleKey('+k.id+','+(!k.enabled)+')"><i></i></label></div>'
+          +'</div>';
+      }).join('')
+      + '<div class="card add" id="uk-card-new-'+u.id+'" onclick="ukeyModal(null,'+u.id+')"><b>＋ 添加 Key</b></div>'
+      +'</div>'}
     <div class="models-box hidden" style="padding:8px 14px;border-top:1px solid var(--line)">
       ${mlp ? `<span class="hint">${models.map(m=>`<code>${esc(m)}</code>`).join(' ') || '官方无数据'}</span>` : renderModelsBox(u)}
     </div>
@@ -792,84 +1083,45 @@ async function saveUpstream(id){
     await loadUpKeys();
   }catch(e){ alert(e.message); }
 }
-async function addKeyTo(upId){
-  const key = $('nk-'+upId+'-key').value.trim();
-  try{ await api('/api/upstream-keys',{method:'POST',body:JSON.stringify({upstream_id:upId,key,label:$('nk-'+upId+'-label').value})}); await loadUpKeys(); }
-  catch(e){ alert(e.message); }
-}
 async function toggleKey(id,en){
   const cur=keys.find(x=>x.id===id);
   try{ await api(`/api/upstream-keys/${id}`,{method:'PUT',body:JSON.stringify({key:cur.key,label:cur.label,enabled:en})}); await loadUpKeys(); }catch(e){alert(e.message)}
 }
-// 真实 Key 编辑保存：备注 + 启停
-async function saveKeyEdit(id){
-  const cur=keys.find(k=>k.id===id);
-  try{
-    await api(`/api/upstream-keys/${id}`,{method:'PUT',body:JSON.stringify({
-      key:cur.key, label:$('ke-'+id+'-label').value.trim(), enabled:$('ke-'+id+'-en').checked })});
-    await loadUpKeys(); $('kedit-'+id).classList.add('hidden');
-  }catch(e){ alert('保存失败：'+e.message); }
-}
-// 策略编辑保存：名称 + 重新映射真实 Key
-async function savePolicyEdit(id){
-  const name=$('pe-'+id+'-name').value.trim(), keyId=+$('pe-'+id+'-key').value;
-  if(!name || !keyId){ alert('需要名称和真实 Key'); return; }
-  try{
-    await api('/api/policies/'+id,{method:'PUT',body:JSON.stringify({
-      name, type:'fixed', config:JSON.stringify({upstream_key_id:keyId}) })});
-    loadPolicies(); loadVirtualKeys(); $('pedit-'+id).classList.add('hidden');
-  }catch(e){ alert('保存失败：'+e.message); }
-}
-// 虚拟 Key 编辑保存：名称 + 切换绑定策略
-async function saveVkEdit(id,enabled){
-  const list=(await api('/api/virtual-keys'))||[]; const cur=list.find(x=>x.id===id);
-  try{
-    await api('/api/virtual-keys/'+id,{method:'PUT',body:JSON.stringify({
-      key:cur.key, name:$('ve-'+id+'-name').value.trim(),
-      policy_id:+$('ve-'+id+'-policy').value, enabled })});
-    loadVirtualKeys(); $('vedit-'+id).classList.add('hidden');
-  }catch(e){ alert('保存失败：'+e.message); }
-}
-
 // ---------- 策略 ----------
 async function loadPolicies(){
-  const list = (await api('/api/policies')) || [];
-  $('pol-body').innerHTML = list.map(p=>{
-    let target='-', curKey=null;
-    try{ const c=JSON.parse(p.config); const k=keys.find(x=>x.id===c.upstream_key_id); if(k){ target=`#${k.id} ${k.upstream} ${k.label||''}`; curKey=k.id; } }catch{}
-    const keyOpts = keys.map(k=>{
-      const u = ups.find(x=>x.name===k.upstream);
-      return `<option value="${k.id}" ${k.id===curKey?'selected':''}>#${k.id} ${esc(u?.note||k.upstream)} · ${esc(k.label||'无备注')}</option>`;
-    }).join('') || '<option value="">（先添加真实 Key）</option>';
-    return `<tr><td>${p.id}</td><td>${esc(p.name)}</td><td>${p.type}</td><td>${esc(target)}</td><td>
-      <button class="small" onclick="toggleRowEdit('pedit-${p.id}')">编辑</button>
-      <button class="danger" onclick="del('/api/policies/${p.id}',loadPolicies)">删除</button></td></tr>
-      <tr id="pedit-${p.id}" class="hidden edit-row"><td colspan="5">
-        <div class="row" style="margin:4px 0"><label>名称</label><input id="pe-${p.id}-name" value="${esc(p.name)}" style="width:260px">
-        <label>映射真实 Key</label><select id="pe-${p.id}-key">${keyOpts}</select>
-        <button class="primary" onclick="savePolicyEdit(${p.id})">保存</button>
-        <button class="small" onclick="toggleRowEdit('pedit-${p.id}')">取消</button></div>
-      </td></tr>`;
-  }).join('') || '<tr><td colspan=5 class=muted>暂无</td></tr>';
-  $('pol-key').innerHTML = keys.map(k=>{
-    const u = ups.find(x=>x.name===k.upstream);
-    return `<option value="${k.id}">#${k.id} ${esc(u?.note||k.upstream)} · ${esc(k.label||'无备注')}</option>`;
-  }).join('') || '<option value="">（先添加真实 Key）</option>';
-  refreshPolSuggest();
+  const [list, vks] = await Promise.all([ api('/api/policies'), api('/api/virtual-keys').catch(()=>[]) ]);
+  polList = list || [];
+  const vlist = vks || [];
+  if (!keysLoaded) return; // 等 loadUpKeys 回来再渲染（它会再调一次 loadPolicies）
+  // 策略卡片只放标准信息（类型、映射到哪把真实 Key、被哪些虚拟 Key 使用）；点卡片弹窗编辑
+  $('pol-cards').innerHTML = polList.map(p=>{
+    let target='未指向有效 Key';
+    try{ const c=JSON.parse(p.config); const k=keys.find(x=>x.id===c.upstream_key_id); if(k){ const u=ups.find(x=>x.name===k.upstream); target=(u?.note||k.upstream)+' · '+(k.label||('Key#'+k.id)); } }catch{}
+    const used = vlist.filter(v=>v.policy_id===p.id);
+    const pt = POLICY_TYPES[p.type] || POLICY_TYPES.fixed;
+    return '<div class="card" id="pol-card-'+p.id+'" onclick="cardClick(\'policy\','+p.id+')">'
+      +'<div class="card-hd"><b>'+esc(p.name)+'</b><span class="badge" title="类型 '+esc(p.type)+'">'+pt.label+'</span></div>'
+      +'<div class="card-kv"><span>映射到</span><span>'+esc(target)+'</span>'
+      +'<span>被使用</span><span>'+(used.length ? used.map(v=>'<a class="small" href="javascript:void(0)" onclick="event.stopPropagation();go(\'#/vkeys/edit/'+v.id+'\')" title="查看该虚拟 Key">'+esc(v.name||v.key)+'</a>').join(' ') : '<span class="muted">未使用</span>')+'</span></div>'
+      +'</div>';
+  }).join('')
+    + '<div class="card add" id="pol-card-new" onclick="policyModal(null)"><b>＋ 新建策略</b><span class="hint">固定映射到一个真实 Key</span></div>';
+  if (route.action) cardFocusApply('policies');
 }
 // 推荐策略名：体现策略内容（固定选择 某服务商某账号）
 function polSuggestName(){
-  const k = keys.find(x=>x.id === +$('pol-key').value);
+  const sel = $('cm-key'); if (!sel) return '';
+  const k = keys.find(x=>x.id === +sel.value);
   if (!k) return '';
   const u = ups.find(x=>x.name===k.upstream);
   return `固定选择 ${u?.note||k.upstream}·${k.label||('Key#'+k.id)}`;
 }
 function refreshPolSuggest(){
+  const box = $('cm-suggest'); if (!box) return; // 仅新建弹窗有推荐位
   const n = polSuggestName();
-  $('pol-suggest').innerHTML = n ? `推荐：${esc(n)} <a class="fill-arrow" href="javascript:void(0)" onclick="$('pol-name').value=polSuggestName()" title="填入推荐名称">↗</a>` : '';
+  box.innerHTML = n ? `推荐：${esc(n)} <a class="fill-arrow" href="javascript:void(0)" onclick="$('cm-name').value=polSuggestName()" title="填入推荐名称">↗</a>` : '';
 }
-$('pol-key').addEventListener('change', refreshPolSuggest);
-async function addPolicy(){ try{ await api('/api/policies',{method:'POST',body:JSON.stringify({name:$('pol-name').value,type:'fixed',config:JSON.stringify({upstream_key_id:+$('pol-key').value})})}); loadPolicies(); }catch(e){alert(e.message)} }
+document.addEventListener('change', e=>{ if (e.target.id==='cm-key') refreshPolSuggest(); });
 
 // ---------- 虚拟 Key（真实Key + 协议联动） ----------
 function randKey(){ const c='abcdefghijklmnopqrstuvwxyz0123456789'; let s='mg-'; for(let i=0;i<24;i++)s+=c[Math.random()*c.length|0]; return s; }
@@ -893,14 +1145,17 @@ function ovRenderStats(){
   ovData.stats.forEach(r=>{ s.calls+=r.calls; s.ok+=r.ok; s.fail+=r.fail; s.pt+=r.prompt_tokens; s.ct+=r.completion_tokens; s.cny+=r.cost_cny; s.pts+=r.cost_points; s.unpriced+=r.unpriced_calls||0; });
   const live = [...ovLive.values()].reduce((a,b)=>a+b, 0);
   const rate = s.calls ? Math.round(s.ok/s.calls*100)+'%' : '-';
-  const cost = s.cny>0 ? '￥'+s.cny.toFixed(2) : (s.pts>0 ? s.pts.toFixed(1)+' 积分' : '￥0.00');
-  const cell = (label, val, sub)=>'<div class="ov-stat" onclick="go(\'#/stats\')"><b>'+val+'</b><span>'+label+'</span>'+(sub?'<i>'+sub+'</i>':'')+'</div>';
-  $('ov-stats').innerHTML = '<div class="ov-stats">'
-    + (live?'<div class="ov-stat ov-live-cell" onclick="go(\'#/stats\')"><b><span class="live-dot"></span>'+live+'</b><span>实时对话中</span><i>链路图中呼吸灯标记</i></div>':'')
-    + cell('今日调用', fmtTok(s.calls), '成功率 '+rate)
-    + cell('今日 tokens', fmtTok(s.pt+s.ct), 'in '+fmtTok(s.pt)+' · out '+fmtTok(s.ct))
-    + cell('今日费用', cost, s.unpriced?('未计价 '+s.unpriced+' 次'):'')
-    + '</div>';
+  // 指标带：标签在左、数值在右；费用与积分分列，口径不混在一张卡里
+  const cell = (label, val, sub, cls)=>'<div class="ov-stat'+(cls?' '+cls:'')+'" onclick="go(\'#/stats\')"><span>'+label+'</span><b>'+val+'</b>'+(sub?'<i>'+sub+'</i>':'')+'</div>';
+  let html = '<div class="ov-stats">';
+  if (live) html += '<div class="ov-stat ov-live-cell" onclick="go(\'#/stats\')"><span>实时对话</span><b><span class="live-dot"></span>'+live+'</b></div>';
+  html += cell('今日调用', fmtTok(s.calls), '成功率 '+rate)
+    + cell('今日 tokens', fmtTok(s.pt+s.ct), 'in '+fmtTok(s.pt)+' · out '+fmtTok(s.ct));
+  if (s.cny>0) html += cell('今日费用', '￥'+s.cny.toFixed(2));
+  if (s.pts>0) html += cell('今日积分', s.pts.toFixed(1));
+  if (!s.cny && !s.pts) html += cell('今日费用', '￥0.00');
+  if (s.unpriced) html += cell('未计价', fmtTok(s.unpriced)+' 次', '', 'warn');
+  $('ov-stats').innerHTML = html + '</div>';
 }
 function ovRenderMap(){
   if (!ovData) return;
@@ -922,26 +1177,34 @@ function ovRenderMap(){
     const live = ovLive.get(v.key)||0;
     const pol = pols.find(p=>p.id===v.policy_id);
     if (pol) ovEdges.push({from:'v:'+v.id, to:'p:'+pol.id});
-    return '<div class="ov-node ov-vkey'+(live?' ov-live':'')+(!pol?' warn':'')+'" data-n="v:'+v.id+'" onclick="go(\'#/vkeys\')">'
+    // 点节点直达该卡片的编辑（#/页面/edit/id）
+    return '<div class="ov-node ov-vkey'+(live?' ov-live':'')+(!pol?' warn':'')+'" data-n="v:'+v.id+'" onclick="go(\'#/vkeys/edit/'+v.id+'\')">'
       +'<b>'+esc(v.name||v.key)+(live?' <em>对话中×'+live+'</em>':'')+'</b>'
       +'<span><code>'+esc(v.key)+'</code>'+(pol?'':' · 未绑策略')+'</span></div>';
-  }).join('') || ovAddNode('虚拟 Key', '#/vkeys');
+  }).join('') || ovAddNode('虚拟 Key', '#/vkeys/new');
   // 中栏：策略（指向的 Key 不存在标警示，连线断开）
   $('ov-col-pols').innerHTML = pols.map(p=>{
     const kid = ovPolKeyID(p);
     const k = uks.find(x=>x.id===kid);
     if (k) ovEdges.push({from:'p:'+p.id, to:'k:'+kid});
-    return '<div class="ov-node ov-pol'+(!k?' warn':'')+'" data-n="p:'+p.id+'" onclick="go(\'#/policies\')">'
+    return '<div class="ov-node ov-pol'+(!k?' warn':'')+'" data-n="p:'+p.id+'" onclick="go(\'#/policies/edit/'+p.id+'\')">'
       +'<b>'+esc(p.name)+'</b><span>'+(k ? '固定 → '+esc(k.upstream+' · '+(k.label||('#'+k.id))) : '⚠ 未指向有效 Key')+'</span></div>';
-  }).join('') || ovAddNode('转发策略', '#/policies');
+  }).join('') || ovAddNode('转发策略', '#/policies/new');
   // 右栏：真实 Key（标注被几个策略引用——反向映射入口；状态异常标警示）
-  $('ov-col-keys').innerHTML = uks.map(k=>{
+  // 未被任何策略引用的 Key 默认折叠成一行，点开才展开，避免噪声淹没在用链路
+  const keyNode = k=>{
     const used = pols.filter(p=>ovPolKeyID(p)===k.id).length;
-    return '<div class="ov-node ov-ukey'+(k.status!=='ok'?' warn':'')+'" data-n="k:'+k.id+'" onclick="go(\'#/keys\')">'
+    return '<div class="ov-node ov-ukey'+(k.status!=='ok'?' warn':'')+'" data-n="k:'+k.id+'" onclick="go(\'#/keys/edit/'+k.id+'\')">'
       +'<b>'+esc(k.label||('#'+k.id))+'</b><span>'+esc(k.upstream)+' · '+(used?used+' 个策略引用':'未使用')+(k.status!=='ok'?' · '+esc(k.status):'')+'</span></div>';
-  }).join('') || ovAddNode('真实 Key', '#/keys');
+  };
+  const inUse = uks.filter(k=>pols.some(p=>ovPolKeyID(p)===k.id)), idle = uks.filter(k=>!pols.some(p=>ovPolKeyID(p)===k.id));
+  $('ov-col-keys').innerHTML = inUse.map(keyNode).join('')
+    + (idle.length ? (ovIdleShown ? idle.map(keyNode).join('') : '') + '<div class="ov-more" onclick="ovToggleIdle()">'+idle.length+' 个未使用的真实 Key '+(ovIdleShown?'▲ 收起':'▼ 展开')+'</div>' : '')
+    || ovAddNode('真实 Key', '#/keys');
   requestAnimationFrame(ovDrawLinks);
 }
+let ovIdleShown = false; // 总览右栏「未使用 Key」折叠状态
+function ovToggleIdle(){ ovIdleShown = !ovIdleShown; ovRenderMap(); }
 function ovAddNode(label, hash){
   return '<div class="ov-node ov-add" onclick="go(\''+hash+'\')"><b>+ 添加'+esc(label)+'</b><span>点击前往对应页面创建</span></div>';
 }
@@ -951,12 +1214,14 @@ function ovDrawLinks(){
   const wrap = map.getBoundingClientRect();
   if (!wrap.width) return;
   svg.setAttribute('viewBox', '0 0 '+Math.round(wrap.width)+' '+Math.round(wrap.height));
-  svg.innerHTML = ovEdges.map(e=>{
+  // 箭头两种配色（常态/高亮），颜色由 CSS 指定
+  const marker = id=>'<marker id="'+id+'" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8 z"/></marker>';
+  svg.innerHTML = '<defs>'+marker('ov-arrow')+marker('ov-arrow-hl')+'</defs>' + ovEdges.map(e=>{
     const a = map.querySelector('.ov-node[data-n="'+e.from+'"]'), b = map.querySelector('.ov-node[data-n="'+e.to+'"]');
     if (!a || !b) return '';
     const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
     const x1 = ra.right - wrap.left, y1 = ra.top + ra.height/2 - wrap.top;
-    const x2 = rb.left - wrap.left, y2 = rb.top + rb.height/2 - wrap.top;
+    const x2 = rb.left - wrap.left - 3, y2 = rb.top + rb.height/2 - wrap.top; // 留 3px 给箭头，不压到目标节点
     if (x2 <= x1) return '';
     const dx = Math.max(20, (x2-x1)/2);
     return '<path data-f="'+e.from+'" data-t="'+e.to+'" d="M'+x1.toFixed(1)+' '+y1.toFixed(1)+' C'+(x1+dx).toFixed(1)+' '+y1.toFixed(1)+', '+(x2-dx).toFixed(1)+' '+y2.toFixed(1)+', '+x2.toFixed(1)+' '+y2.toFixed(1)+'"/>';
@@ -1011,51 +1276,26 @@ window.addEventListener('resize', ()=>{ if (route.page==='overview') ovDrawLinks
 async function loadVirtualKeys(){
   const list = (await api('/api/virtual-keys')) || [];
   const pols = (await api('/api/policies')) || [];
-  // 今日调用数：来自统计总览（days=1），首页即有使用概览
+  vkList = list; polList = pols;
+  // 今日调用数：来自统计总览（days=1），卡片上直接可见使用概览
   let today = {};
   try{ ((await api('/api/stats/overview?days=1'))||[]).forEach(r=>today[r.virtual_key_id]=r.calls); }catch{}
   $('vk-baseurl').textContent = location.origin + '/v1';
-  // 策略下拉：显示策略 name（体现转发内容）
-  $('vk-policy').innerHTML = pols.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')
-    || '<option value="">（先创建策略）</option>';
-  // 虚拟 Key 只展示绑定的策略；服务商/真实Key/协议是策略内部细节，在策略页查看
-  if (!list.length){
-    $('vk-body').innerHTML = '<tr><td colspan=7><div class="empty"><b>还没有虚拟 Key</b>使用三步完成接入：① 服务商与 Key 页添加真实 Key → ② 转发策略页创建策略 → ③ 在上方创建虚拟 Key</div></td></tr>';
-    return;
-  }
-  $('vk-body').innerHTML = list.map(v=>{
+  // 卡片只放标准信息 + 开关；「日志 / 统计」是跳转留在卡上，编辑和删除在点卡片弹出的弹窗里
+  $('vk-cards').innerHTML = vkList.map(v=>{
     const p = pols.find(x=>x.id===v.policy_id);
-    // 编辑行紧跟数据行：修改名称与绑定策略（key 值已发放不修改）
-    const polOpts = pols.map(pp=>`<option value="${pp.id}" ${pp.id===v.policy_id?'selected':''}>${esc(pp.name)}</option>`).join('')
-      || '<option value="">（先创建策略）</option>';
-    return `<tr><td>${v.id}</td><td><code>${esc(v.key)}</code></td><td>${esc(v.name)}</td>
-      <td>${p?esc(p.name):'-'}</td>
-      <td>${today[v.id]??0}</td>
-      <td><label class="switch" title="${v.enabled?'点击停用':'点击启用'}"><input type="checkbox" ${v.enabled?'checked':''} onchange="toggleVk(${v.id},${!v.enabled})"><i></i></label></td><td>
-      <button class="small" onclick="copyText('${esc(v.key)}',this)">复制</button>
-      <button class="small" onclick="toggleRowEdit('vedit-${v.id}')">编辑</button>
-      <button class="small" onclick="go('#/stats/${v.id}')">统计</button>
-      <button class="small" onclick="go('#/logs/${v.id}')">日志</button>
-      <span style="display:inline-block;width:18px"></span>
-      <button class="danger" onclick="del('/api/virtual-keys/${v.id}',loadVirtualKeys,'删除后使用该 Key 的客户端将立即失效')">删除</button></td></tr>
-      <tr id="vedit-${v.id}" class="hidden edit-row"><td colspan="7">
-      <div class="row" style="margin:4px 0"><label>名称</label><input id="ve-${v.id}-name" value="${esc(v.name)}" style="width:200px">
-      <label>调用策略</label><select id="ve-${v.id}-policy">${polOpts}</select>
-      <button class="primary" onclick="saveVkEdit(${v.id},${v.enabled})">保存</button>
-      <button class="small" onclick="toggleRowEdit('vedit-${v.id}')">取消</button>
-      <span class="hint">key 值不修改；需换值请新建虚拟 Key</span></div>
-    </td></tr>`;
-  }).join('');
-}
-async function addVirtualKey(){
-  if (!$('vk-policy').value){ alert('先创建策略'); return; }
-  try{
-    await api('/api/virtual-keys',{method:'POST',body:JSON.stringify({
-      key: randKey(), name:$('vk-name').value, policy_id:+$('vk-policy').value,
-    })});
-    $('vk-name').value='';
-    loadVirtualKeys();
-  }catch(e){ alert(e.message); }
+    return '<div class="card'+(v.enabled?'':' off')+'" id="vk-card-'+v.id+'" onclick="cardClick(\'vkey\','+v.id+')">'
+      +'<div class="card-hd"><b>'+esc(v.name||'（未命名）')+'</b>'+(v.enabled?'':'<span class="badge err">停用</span>')
+      +'<span class="spacer"></span><label class="switch" title="'+(v.enabled?'点击停用':'点击启用')+'" onclick="event.stopPropagation()"><input type="checkbox" '+(v.enabled?'checked':'')+' onchange="toggleVk('+v.id+','+(!v.enabled)+')"><i></i></label></div>'
+      +'<div class="card-kv">'
+      +'<span>Key</span><span><code>'+esc(v.key)+'</code> <button class="small" onclick="event.stopPropagation();copyText(\''+esc(v.key)+'\',this)">复制</button></span>'
+      +'<span>策略</span><span>'+(p ? '<a class="small" href="javascript:void(0)" onclick="event.stopPropagation();go(\'#/policies/edit/'+p.id+'\')" title="查看该策略">'+esc(p.name)+'</a>' : '<span class="badge err">未绑策略</span>')+'</span>'
+      +'<span>今日</span><span>'+fmtTok(today[v.id]??0)+' 次调用</span></div>'
+      +'<div class="card-ft"><a class="small" href="javascript:void(0)" onclick="event.stopPropagation();go(\'#/logs/'+v.id+'\')">日志</a>'
+      +'<a class="small" href="javascript:void(0)" onclick="event.stopPropagation();go(\'#/stats/'+v.id+'\')">统计</a></div>'
+      +'</div>';
+  }).join('') + '<div class="card add" id="vk-card-new" onclick="vkeyModal(null)"><b>＋ 新建虚拟 Key</b><span class="hint">生成一个对外发放的 Key</span></div>';
+  if (route.action) cardFocusApply('vkeys');
 }
 async function toggleVk(id,en){
   const l=(await api('/api/virtual-keys'))||[]; const cur=l.find(x=>x.id===id);
@@ -1123,14 +1363,15 @@ function stSummaryBar(rows){
     a.unpriced+=r.unpriced_calls||0; a.prev_tok+=r.prev_tokens||0; return a; },
     {calls:0,ok:0,tok:0,cny:0,pts:0,cached:0,prompt:0,unpriced:0,prev_tok:0});
   const cost = sum.cny>0 ? '￥'+fmtCNY(sum.cny) : sum.pts>0 ? sum.pts.toFixed(1)+' 积分' : '￥0';
-  return `<div class="panel" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-    <b>合计</b>
-    <span class="badge">调用 ${sum.calls}(${sum.ok}/${sum.calls-sum.ok})</span>
-    <span class="badge">tokens ${sum.tok.toLocaleString()}${sum.prev_tok?` 同比 ${((sum.tok-sum.prev_tok)/sum.prev_tok*100).toFixed(1)}%`:''}</span>
-    <span class="badge">消耗 ${cost}</span>
-    <span class="badge">平均单次 ${sum.calls?(sum.tok/sum.calls).toFixed(1):0} tok</span>
-    <span class="badge">缓存 ${sum.prompt>0?(sum.cached/sum.prompt*100).toFixed(1)+'%':'-'}</span>
-    ${sum.unpriced?`<span class="badge err">未计价 ${sum.unpriced}</span>`:''}</div>`;
+  const wowTok = sum.prev_tok ? (sum.tok-sum.prev_tok)/sum.prev_tok*100 : null;
+  return `<div class="panel" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:8px 14px">
+    <b style="font-size:12px">合计</b>
+    <span class="kpi"><i>调用</i><b>${fmtTok(sum.calls)}</b><i>成功 ${fmtTok(sum.ok)} / 失败 ${fmtTok(sum.calls-sum.ok)}</i></span>
+    <span class="kpi"><i>tokens</i><b>${fmtTok(sum.tok)}</b>${wowTok!=null?`<i class="${wowTok>=0?'up':'down'}">同比 ${wowTok>=0?'+':''}${wowTok.toFixed(1)}%</i>`:''}</span>
+    <span class="kpi"><i>消耗</i><b>${cost}</b></span>
+    <span class="kpi"><i>平均单次</i><b>${fmtTok(Math.round(sum.calls?sum.tok/sum.calls:0))}</b><i>tok</i></span>
+    <span class="kpi"><i>缓存</i><b>${sum.prompt>0?(sum.cached/sum.prompt*100).toFixed(1)+'%':'-'}</b></span>
+    ${sum.unpriced?`<span class="kpi down"><i>未计价</i><b>${fmtTok(sum.unpriced)}</b></span>`:''}</div>`;
 }
 
 async function renderVKeyStats(){
@@ -1201,41 +1442,61 @@ function stChips(series){
   const sum = series.reduce((a,d)=>{ a.calls+=d.calls; a.ok+=d.ok; a.tok+=stTok(d); a.cached+=d.prompt_cached_tokens||0; a.prompt+=d.prompt_tokens; a.unpriced+=d.unpriced_calls||0; return a; },{calls:0,ok:0,tok:0,cached:0,prompt:0,unpriced:0});
   const avg = sum.calls? sum.tok/sum.calls : 0;
   const cache = sum.prompt>0 ? (sum.cached/sum.prompt*100).toFixed(1)+'%' : '-';
-  return `<span class="badge">调用 ${sum.calls}(${sum.ok}/${sum.calls-sum.ok})</span>
-    <span class="badge">平均单次 ${avg.toFixed(1)} tok</span>
-    <span class="badge" title="prompt 缓存命中 ${sum.cached.toLocaleString()} / ${sum.prompt.toLocaleString()}">缓存 ${cache}</span>
-    ${sum.unpriced?`<span class="badge err" title="模型无价格数据的调用">未计价 ${sum.unpriced}</span>`:''}`;
+  return `<span class="kpi"><i>调用</i><b>${fmtTok(sum.calls)}</b><i>成功 ${fmtTok(sum.ok)} / 失败 ${fmtTok(sum.calls-sum.ok)}</i></span>
+    <span class="kpi"><i>平均单次</i><b>${fmtTok(Math.round(avg))}</b><i>tok</i></span>
+    <span class="kpi" title="prompt 缓存命中 ${fmtTok(sum.cached)} / ${fmtTok(sum.prompt)}"><i>缓存</i><b>${cache}</b></span>
+    ${sum.unpriced?`<span class="kpi down" title="模型无价格数据的调用"><i>未计价</i><b>${fmtTok(sum.unpriced)}</b></span>`:''}`;
 }
-// 天级折线图：主指标折线 + 7 日移动平均（周均线），点悬停看同比
+// 纵轴刻度短格式：万 / 亿，刻度读感整齐
+function stShort(v){
+  if (v>=1e8) return (v/1e8).toFixed(1)+'亿';
+  if (v>=1e4) return (v/1e4).toFixed(v>=1e6?0:1)+'万';
+  return Math.round(v).toLocaleString('en-US');
+}
+// 折线图通用绘制：固定高度 110px；纵轴 3 档刻度、底部横轴刻度带、峰值标注、当前时间竖线。
+// 曲线用 SVG（preserveAspectRatio=none + 不缩放描边），刻度与标注用 HTML 定位，文字不随宽度变形
+function stPlot({n, xs, lines, dots, fmtY, nowIdx}){
+  const all = lines.flatMap(l=>l.vals);
+  const max = Math.max(...all, 1e-9);
+  // 纵轴上限取「整齐数」(1/2/5 × 10^k)，刻度落在好读的位置
+  const mag = Math.pow(10, Math.floor(Math.log10(max)));
+  const niceMax = [1,2,5,10].map(m=>m*mag).find(v=>v>=max) || max;
+  const px = i => n>1 ? i/(n-1)*100 : 50;
+  const py = v => 100 - v/niceMax*100;
+  const W=1000, H=100;
+  const poly = (vals, upto) => vals.slice(0, (upto==null?vals.length-1:upto)+1).map((v,i)=>(i/(n-1)*W).toFixed(1)+','+((1-v/niceMax)*H).toFixed(1)).join(' ');
+  const svgLines = lines.map(l=>'<polyline points="'+poly(l.vals, l.upto)+'" fill="none" stroke="'+l.color+'" stroke-width="'+(l.w||1.5)+'"'+(l.dash?' stroke-dasharray="6 4"':'')+' vector-effect="non-scaling-stroke" opacity="'+(l.opacity==null?1:l.opacity)+'"/>').join('');
+  const grid = [1,.5,0].map(f=>'<div class="st-grid" style="top:'+((1-f)*100)+'%"></div>').join('');
+  const yLabels = [1,.5,0].map(f=>'<span style="top:'+((1-f)*100)+'%">'+fmtY(f*niceMax)+'</span>').join('');
+  const xLabels = xs.map((t,i)=>t==null?'':'<span style="left:'+px(i)+'%">'+t+'</span>').join('');
+  const dotsHTML = dots.map(d=>'<i class="st-dot" style="left:'+px(d.i)+'%;top:'+py(d.v)+'%" title="'+esc(d.title)+'"></i>').join('');
+  const peak = dots.reduce((a,b)=>!a||b.v>a.v?b:a, null);
+  const peakHTML = peak && peak.v>0 ? '<span class="st-peak" style="left:'+px(peak.i)+'%;top:'+py(peak.v)+'%">'+fmtY(peak.v)+'</span>' : '';
+  const nowHTML = nowIdx!=null ? '<div class="st-now" style="left:'+px(nowIdx)+'%"></div>' : '';
+  return '<div class="st-plot"><div class="st-y">'+yLabels+'</div><div class="st-curve">'+grid
+    +'<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">'+svgLines+'</svg>'+dotsHTML+peakHTML+nowHTML
+    +'</div><div class="st-x">'+xLabels+'</div></div>';
+}
+// 天级折线图：主指标折线 + 7 日移动平均（周均线），点悬停看同比；返回 {html, legend}，图例并入控件行
 function stDayChart(series, prevMap){
   const u = stUnit(series);
   const asc = series.slice().reverse();
-  const W=640, H=72, PAD=6;
   const vals = asc.map(u.get);
-  const max = Math.max(...vals, 1e-9);
-  const x = i => PAD + i*(W-2*PAD)/Math.max(asc.length-1,1);
-  const y = v => H-PAD-(v/max)*(H-2*PAD);
-  const line = pts => pts.map((v,i)=>x(i).toFixed(1)+','+y(v).toFixed(1)).join(' ');
-  // 7 日移动平均（不足 7 天用现有天数）
   const ma = vals.map((_,i)=>{ const s=Math.max(0,i-6); return vals.slice(s,i+1).reduce((a,b)=>a+b,0)/(i-s+1); });
   const dots = asc.map((d,i)=>{
-    const v = vals[i];
     const tok = stTok(d);
     const day = prevMap[stHourShift(d.bucket,-1)] ?? 0;
     const week = prevMap[stHourShift(d.bucket,-7)] ?? 0;
-    return `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.5" fill="var(--accent)">
-      <title>${d.bucket} · ${u.fmt(v)} · tokens ${tok.toLocaleString()} · 日同比 ${day?((tok-day)/day*100).toFixed(1)+'%':'-'} · 周同比 ${week?((tok-week)/week*100).toFixed(1)+'%':'-'}</title></circle>`;
-  }).join('');
+    return { i, v:vals[i], title: d.bucket+' · '+u.fmt(vals[i])+' · tokens '+fmtTok(tok)+' · 日同比 '+(day?((tok-day)/day*100).toFixed(1)+'%':'-')+' · 周同比 '+(week?((tok-week)/week*100).toFixed(1)+'%':'-') };
+  });
   const step = Math.max(1, Math.ceil(asc.length/8));
-  const labels = asc.map((d,i)=> i%step===0 ? `<text x="${x(i).toFixed(1)}" y="${H-1}" font-size="9" fill="var(--dim)" text-anchor="middle">${d.bucket.slice(5)}</text>`:'').join('');
-  return `<div class="row" style="margin:2px 0"><span class="hint"><i style="display:inline-block;width:14px;height:2px;background:var(--accent);vertical-align:middle"></i> 每日${u.label}
-    <i style="display:inline-block;width:14px;height:2px;background:var(--dim);vertical-align:middle;margin-left:8px;border-top:1px dashed var(--dim);background:none"></i> 周均线(7日MA)</span></div>
-  <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
-    <polyline points="${line(ma)}" fill="none" stroke="var(--dim)" stroke-width="1" stroke-dasharray="4 3" opacity=".8"/>
-    <polyline points="${line(vals)}" fill="none" stroke="var(--accent)" stroke-width="2"/>
-    ${dots}${labels}</svg>`;
+  const xs = asc.map((d,i)=> i%step===0 ? d.bucket.slice(5) : null);
+  // 末点必有刻度：避免最后一天/小时没有横轴标签
+  if (xs.length>1 && xs[xs.length-1]==null){ if (xs.length-1-step>=0) xs[xs.length-1-step]=null; xs[xs.length-1]=asc[asc.length-1].bucket.slice(5); }
+  return { html: stPlot({n:asc.length, xs, lines:[{vals:ma, color:'var(--dim)', dash:true, opacity:.8}, {vals, color:'var(--accent)', w:1.8}], dots, fmtY:stShort}),
+    legend: '<span><i style="background:var(--accent)"></i>每日'+u.label+'</span><span><i class="dash" style="color:var(--dim)"></i>周均线(7日MA)</span>' };
 }
-// 小时图：当日柱 + 一周同小时平均线（7 天窗口，不含当日）
+// 小时图：当日折线（只画到当前小时）+ 一周同小时平均线（7 天窗口，不含当日）+ 当前时间竖线；返回 {html, legend}
 function stHourChart(series){
   const u = stUnit(series);
   const byBucket = {}; series.forEach(x=>byBucket[x.bucket]=x);
@@ -1247,51 +1508,33 @@ function stHourChart(series){
     const h=+x.bucket.slice(11,13); if (h>=0&&h<24){ acc[h].sum+=u.get(x); acc[h].n++; } });
   const avg = acc.map(a=>a.n? a.sum/a.n : 0);
   const curVals = Array.from({length:24},(_,h)=>cur(h)?u.get(cur(h)):0);
-  // 最新一天若是今天：当前小时之后的时段尚未发生，折线截止到当前小时，后半段不画
+  // 最新一天若是今天：当前小时之后的时段尚未发生，折线截止到当前小时
   const today = new Date().toLocaleDateString('sv-SE');
   const isToday = lastDay === today;
   const lastH = isToday ? new Date().getHours() : 23;
-  const max = Math.max(...curVals, ...avg, 1e-9);
   const hasAvg = avg.some(a=>a>0);
-  // 双折线（与天级图同款 SVG）：当日线(accent) + 一周同小时均值线(warn 虚线)
-  const W=640, H=72, PAD=6;
-  const x = h => PAD + h*(W-2*PAD)/23;
-  const y = v => H-PAD-(v/max)*(H-2*PAD);
-  // 当日线只画到已发生的时段；周均线是历史均值，画满 24 小时
-  const line = (vals, upto) => vals.slice(0, (upto??lastH)+1).map((v,h)=>x(h).toFixed(1)+','+y(v).toFixed(1)).join(' ');
+  const xs = Array.from({length:24},(_,h)=> h%3===0 ? String(h).padStart(2,'0') : null);
+  xs[23]='23';
   const dots = Array.from({length:lastH+1},(_,h)=>{
-    const c=curVals[h], a=avg[h];
-    const d=cur(h);
-    const tip=`${lastDay} ${String(h).padStart(2,'0')} 时 · 当日 ${u.fmt(c)}${d?` · tokens ${stTok(d).toLocaleString()}`:''} · 周均 ${u.fmt(a)}${a>0?` · ${((c-a)/a*100).toFixed(1)}%`:''}`;
-    return `<circle cx="${x(h).toFixed(1)}" cy="${y(c).toFixed(1)}" r="2.5" fill="var(--accent)"><title>${tip}</title></circle>`;
-  }).join('');
-  const labels = Array.from({length:24},(_,h)=> h%3===0 ? `<text x="${x(h).toFixed(1)}" y="${H-1}" font-size="9" fill="var(--dim)" text-anchor="middle">${h}</text>`:'').join('');
-  // 当前时间竖线（仅当天视图）
+    const c=curVals[h], a=avg[h], d=cur(h);
+    return { i:h, v:c, title: lastDay+' '+String(h).padStart(2,'0')+' 时 · 当日 '+u.fmt(c)+(d?' · tokens '+fmtTok(stTok(d)):'')+' · 周均 '+u.fmt(a)+(a>0?' · '+((c-a)/a*100).toFixed(1)+'%':'') };
+  });
   const now = new Date();
-  const nowX = x(now.getHours() + now.getMinutes()/60);
-  const nowLine = isToday ? `<line x1="${nowX.toFixed(1)}" y1="2" x2="${nowX.toFixed(1)}" y2="${H-12}" stroke="var(--dim)" stroke-width="1" stroke-dasharray="3 2">
-      <title>当前时间 ${now.toLocaleTimeString('zh-CN',{hour12:false,hour:'2-digit',minute:'2-digit'})}</title></line>` : '';
-  return `<div class="row" style="margin:2px 0"><span class="hint"><b>${lastDay}</b> 24 小时分布
-    <i style="display:inline-block;width:14px;height:2px;background:var(--accent);vertical-align:middle"></i> 当日
-    <i style="display:inline-block;width:14px;height:2px;background:var(--warn);vertical-align:middle;margin-left:8px;border-top:1px dashed var(--warn);background:none"></i> 一周同小时均值${hasAvg?'':'（近一周暂无数据）'}</span></div>
-  <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
-    ${nowLine}
-    ${hasAvg?`<polyline points="${line(avg,23)}" fill="none" stroke="var(--warn)" stroke-width="1.2" stroke-dasharray="4 3" opacity=".9"/>`:''}
-    <polyline points="${line(curVals)}" fill="none" stroke="var(--accent)" stroke-width="2"/>
-    ${dots}${labels}</svg>`;
+  const nowIdx = isToday ? now.getHours()+now.getMinutes()/60 : null;
+  return { html: stPlot({n:24, xs, lines:[...(hasAvg?[{vals:avg, color:'var(--warn)', dash:true, opacity:.9}]:[]), {vals:curVals, color:'var(--accent)', w:1.8, upto:lastH}], dots, fmtY:stShort, nowIdx}),
+    legend: '<b>'+lastDay+'</b> 24 小时分布 <span><i style="background:var(--accent)"></i>当日</span><span><i class="dash" style="color:var(--warn)"></i>一周同小时均值</span>'+(hasAvg?'':'（近一周暂无数据）') };
 }
 
 function stSeriesHTML(key, gran, series, prevSeries, metric){
-  const segBtn = (g,label)=>`<button class="small" ${g===gran?'style="background:var(--accent);color:#fff"':''} onclick="stGran('${key}','${g}')">${label}</button>`;
-  if (!series.length) return `<div class="row">${segBtn('day','按天')}${segBtn('hour','按小时')}<span class="hint">该粒度暂无数据</span></div>`;
+  const segBtn = (g,label)=>`<button class="${g===gran?'on':''}" onclick="stGran('${key}','${g}')">${label}</button>`;
+  if (!series.length) return `<div class="st-tools"><div class="seg">${segBtn('day','按天')}${segBtn('hour','按小时')}</div><span class="hint">该粒度暂无数据</span></div>`;
   const tokVal = d => stTok(d) || 0;
   const prevMap = {};
   (prevSeries||[]).forEach(x=>prevMap[x.bucket] = tokVal(x));
   const chart = gran==='day' ? stDayChart(series, prevMap) : stHourChart(series);
-  const chips = `<div class="row" style="margin:2px 0">${stChips(series)}</div>`;
   const head = gran==='day'
-    ? '<th>日期</th><th>调用(成/败)</th><th>消耗</th><th>tokens</th><th>平均单次</th><th>缓存率</th><th>日同比</th><th>周同比</th>'
-    : '<th>小时</th><th>调用(成/败)</th><th>tokens</th><th>平均单次</th><th>缓存率</th><th>vs 周均值</th>';
+    ? '<th>日期</th><th>调用(成/败)</th><th class="num">消耗</th><th class="num">tokens</th><th class="num">平均单次</th><th class="num">缓存率</th><th class="num">日同比</th><th class="num">周同比</th>'
+    : '<th>小时</th><th>调用(成/败)</th><th class="num">tokens</th><th class="num">平均单次</th><th class="num">缓存率</th><th class="num">vs 周均值</th>';
   const u = stUnit(series);
   const weekAvg = gran==='hour' ? (()=>{ // 与图表同口径：排除最新一天的各小时均值
     const lastDay = series.map(x=>x.bucket.slice(0,10)).sort().pop();
@@ -1305,16 +1548,17 @@ function stSeriesHTML(key, gran, series, prevSeries, metric){
     const cmp=(base,cur)=>base>0?((cur-base)/base*100).toFixed(1)+'%':'-';
     if (gran==='day'){
       const day=prevMap[stHourShift(d.bucket,-1)]??0, week=prevMap[stHourShift(d.bucket,-7)]??0;
-      return `<tr><td>${esc(d.bucket)}</td><td>${d.calls}(${d.ok}/${d.fail})</td><td>${u.fmt(u.get(d))}</td>
-        <td>${tok.toLocaleString()}</td><td>${avg.toFixed(1)}</td><td>${cache}</td>
-        <td>${day?cmp(day,tok):'-'}</td><td>${week?cmp(week,tok):'-'}</td></tr>`;
+      return `<tr><td>${esc(d.bucket)}</td><td>${d.calls}(${d.ok}/${d.fail})</td><td class="num">${u.fmt(u.get(d))}</td>
+        <td class="num">${fmtTok(tok)}</td><td class="num">${fmtTok(Math.round(avg))}</td><td class="num">${cache}</td>
+        <td class="num">${day?cmp(day,tok):'-'}</td><td class="num">${week?cmp(week,tok):'-'}</td></tr>`;
     }
     const h=d.bucket.slice(11,13), a=weekAvg[h]||0;
     return `<tr><td>${esc(d.bucket)}</td><td>${d.calls}(${d.ok}/${d.fail})</td>
-      <td>${tok.toLocaleString()}</td><td>${avg.toFixed(1)}</td><td>${cache}</td>
-      <td>${a>0?cmp(a,tok):'-'}</td></tr>`;
+      <td class="num">${fmtTok(tok)}</td><td class="num">${fmtTok(Math.round(avg))}</td><td class="num">${cache}</td>
+      <td class="num">${a>0?cmp(a,tok):'-'}</td></tr>`;
   }).join('');
-  return `<div class="row">${segBtn('day','按天')}${segBtn('hour','按小时')}</div>${chips}${chart}
+  // 控件、指标、图例合成一行（省两行）；图固定高度并带刻度
+  return `<div class="st-tools"><div class="seg">${segBtn('day','按天')}${segBtn('hour','按小时')}</div>${stChips(series)}<span class="legend">${chart.legend}</span></div>${chart.html}
     <table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 
@@ -1571,9 +1815,12 @@ function klogRenderSess(){
       const isNewT = t.calls.some(c=>klogNewCallIds.has(c.id));
       const gStart = Math.min(...t.calls.map(x=>x.started_at));
       const gEnd = Math.max(...t.calls.map(x=>x.started_at+Math.max(x.duration_ms||0,1)));
+      // 单轮次会话：时间段与次数和会话头完全重复，轮次头只留短 ID（信息不丢，少一行重复）
+      const solo = b.turns.length===1;
       const thdr = '<div class="wf-group-hdr" style="cursor:pointer" onclick="klogToggle(this.dataset.k)" data-k="'+esc(tkey)+'">'+
         '<span>'+(openT?'▾':'▸')+' turn '+esc(t.tid ? t.tid.slice(0,8) : '未分轮')+'</span>'+
-        '<span>'+fmtDayMS(gStart)+' → '+fmtDayMS(gEnd)+'</span><span>'+t.calls.length+' 次调用'+(isNewT&&!single?' <span class="new-flag">新</span>':'')+'</span></div>';
+        (solo?'':'<span>'+fmtDayMS(gStart)+' → '+fmtDayMS(gEnd)+'</span><span>'+t.calls.length+' 次调用</span>')+
+        (isNewT&&!single?' <span class="new-flag">新</span>':'')+'</div>';
       if (!openT) return '<div class="wf-group">'+thdr+'</div>'; // 折叠只剩头
       const body = klogSegBody(t.calls, gStart, globalMax, klogNewCallIds);
       return '<div class="wf-group">'+(single?'':thdr)+body.rows+body.scaleHTML+'</div>';
@@ -1606,7 +1853,7 @@ function wfTokenHTML(c){
   if (c.prompt_tokens>0){
     const rate = Math.min(cached/c.prompt_tokens,1);
     // viewer 同款：mini 进度条 + 百分比，颜色随命中率变化
-    const pct=(rate*100).toFixed(2), color = rate>=.8?'#4ec9b0':rate>=.5?'#569cd6':rate>=.2?'#dcdcaa':'#ce9178';
+    const pct=(rate*100).toFixed(2), color = rate>=.8?'var(--cache-hi)':rate>=.5?'var(--cache-mid)':rate>=.2?'var(--cache-low)':'var(--cache-vlow)';
     html += '<span class="cache-rate" title="缓存命中 '+fmtTok(cached)+' / '+fmtTok(c.prompt_tokens)+'">Cache <span class="cache-bar"><i style="width:'+pct+'%;background:'+color+'"></i></span> '+pct+'%</span>';
   }
   html += '</div>';
@@ -1698,35 +1945,96 @@ document.addEventListener('DOMContentLoaded', ()=>{
 });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeDrawer(); });
 
-// 折叠分区展开状态（会话间保持）
-const secOpen = new Set(['请求体 · Messages', '响应体 · Content']);
-function sec(title, count, bodyHtml){
+// 折叠分区展开状态（会话间保持）；各标签页的主要内容默认展开（切到 SSE/Headers 标签即可直接看内容）
+const secOpen = new Set(['请求体 · Messages', '响应体 · Content', 'SSE 分包', '请求 Headers', '响应 Headers']);
+const secBodies = new Map(); // 懒加载分区：标题 → 内容生成函数（原始 JSON / SSE 体积大，首次展开才生成 DOM）
+// sec(title, count, body)：body 为字符串直接渲染；为函数则懒加载（展开时才调用）
+function sec(title, count, body){
   const isOpen = secOpen.has(title);
-  return `<div class="sec"><div class="sec-hdr" onclick="toggleSec(this,'${title.replace(/'/g,"")}')">
-    <span>${isOpen?'▼':'▶'}</span> ${title} <span class="cnt">(${count})</span></div>
-    <div class="sec-body ${isOpen?'':'hidden'}">${bodyHtml}</div></div>`;
+  const lazy = typeof body === 'function';
+  if (lazy) secBodies.set(title, body);
+  return '<div class="sec"><div class="sec-hdr" onclick="toggleSec(this,\''+title.replace(/'/g,"")+'\')">'
+    +'<span>'+(isOpen?'▼':'▶')+'</span> '+title+' <span class="cnt">('+count+')</span></div>'
+    +'<div class="sec-body '+(isOpen?'':'hidden')+'"'+(lazy?' data-lazy="1"':'')+'>'+((lazy ? (isOpen?body():'') : body))+'</div></div>';
 }
 function toggleSec(el, title){
   const body = el.nextElementSibling;
+  if (body.dataset.lazy && !body.dataset.loaded){ body.innerHTML = (secBodies.get(title)||(()=>''))(); body.dataset.loaded='1'; }
   const hidden = body.classList.toggle('hidden');
   el.querySelector('span').textContent = hidden?'▶':'▼';
   if(hidden) secOpen.delete(title); else secOpen.add(title);
 }
+// 单条消息文本：content 多协议形态 → 统一成字符串（字符串 / openai 数组 [{type:'text',text}] / responses 数组 [{type:'input_text',text}] / null=纯 tool_calls）
+function msgText(m){
+  if (typeof m.content === 'string') return m.content;
+  if (Array.isArray(m.content)) return m.content.map(p=>p.text ?? p.summary ?? JSON.stringify(p)).join('\n');
+  if (m.content != null) return JSON.stringify(m.content);
+  return '';
+}
 // 单条消息渲染：role 标签 + 摘要 + 可展开
 function msgHTML(m){
   const role = m.role||'other';
-  // content 多协议形态：字符串 / openai 数组 [{type:'text',text}] / responses 数组 [{type:'input_text',text}] / null(纯 tool_calls)
-  let txt = '';
-  if (typeof m.content === 'string') txt = m.content;
-  else if (Array.isArray(m.content)) txt = m.content.map(p=>p.text ?? p.summary ?? JSON.stringify(p)).join('\n');
-  else if (m.content != null) txt = JSON.stringify(m.content);
-  // tool_calls 单独在卡片底部 hint 行展示，不拼进正文（避免同卡片重复两遍）
+  const txt = msgText(m);
   const preview = txt.replace(/\s+/g,' ').slice(0,90);
   let body = '<pre>'+esc(txt)+'</pre>'; // 不限高度直接平铺
+  // tool_calls 单独在卡片底部 hint 行展示，不拼进正文（避免同卡片重复两遍）
   if (m.tool_calls) body += m.tool_calls.map(tc=>'<div class="hint">tool_call: '+esc((tc.function||{}).name||'?')+' '+esc((tc.function||{}).arguments||'')+'</div>').join('');
-  return `<div class="msg role-${role}"><div class="msg-hdr" onclick="this.nextElementSibling.classList.toggle('hidden')">
-    <span class="role role-${role}">${esc(role)}</span><span class="msg-preview">${esc(preview)}</span></div>
-    <div class="msg-body hidden">${body}</div></div>`;
+  return '<div class="msg role-'+role+'"><div class="msg-hdr" onclick="this.nextElementSibling.classList.toggle(\'hidden\')">'
+    +'<span class="role role-'+role+'">'+esc(role)+'</span><span class="msg-preview">'+esc(preview)+'</span></div>'
+    +'<div class="msg-body hidden">'+body+'</div></div>';
+}
+// ---------- 抽屉：标签页 + 消息分组 ----------
+// 抽屉标签页：响应(默认) | 请求 | SSE | Headers。四组内容按请求缓存，切标签只重组 DOM，不重新请求
+let drawerData = null, drawerTab = 'resp', drawerMsgLimit = 100, drawerRuns = {};
+function drawerSetTab(t){ drawerTab = t; renderDrawer(); }
+function drawerMsgMore(){ drawerMsgLimit *= 4; renderDrawer(); }
+// 摘要条吸顶：滚动看长内容时，耗时/token/转发地址始终可见
+function renderDrawer(){
+  const d = drawerData; if (!d) return;
+  const c = d.c;
+  const tabs = [['resp','响应',null],['req','请求',d.msgCount],['sse','SSE',d.chunks.length],['hdr','Headers',null]]
+    .map(([k,label,n])=>'<button class="'+(drawerTab===k?'on':'')+'" onclick="drawerSetTab(\''+k+'\')">'+label+(n!=null?'<i>'+n+'</i>':'')+'</button>').join('');
+  const sum =
+    '<div class="row" style="margin:0"><b>#'+c.id+' '+esc(c.model)+'</b>'
+    +'<span class="badge '+(c.error||((c.status_code??500)>=400)?'err':'ok')+'">'+(c.status_code??'失败')+(c.error?' '+esc(c.error):'')+'</span>'
+    +(c.session_id?'<span class="badge" title="'+esc(c.session_id)+'">'+esc(c.session_id.slice(0,8))+' · '+esc(c.client||'')+'</span>':'')
+    +(c.cost_cny!=null?'<span class="badge">￥'+Number(c.cost_cny).toFixed(6)+'</span>':'')+'</div>'
+    +'<div class="hint">'+fmtMS(c.started_at)+' ~ '+(c.ended_at?fmtMS(c.ended_at):'-')+' · total '+fmtDur(c.duration_ms)+' · upstream '+fmtDur(c.upstream_ms)+' · first_token '+fmtDur(c.first_byte_ms)+' · '+(c.total_tokens??'-')+' tokens'+(c.cost_cny==null&&c.cost_points==null?' · 未计价':'')+'</div>'
+    +'<div class="row" style="margin:2px 0 0"><span class="hint">转发 →</span><code style="white-space:normal;word-break:break-all">'+esc(c.upstream_url||(c.upstream?c.upstream:'(未记录)'))+'</code></div>';
+  const body = drawerTab==='resp' ? d.resp : drawerTab==='sse' ? d.sse : drawerTab==='hdr' ? d.hdr
+    : sec('请求体 · Messages', d.msgCount, messagesHTML(d.messages)) + d.reqRest; // Messages 按当前渲染上限重算
+  $('klog-detail').innerHTML = '<div class="drawer-sum">'+sum+'</div>' + body;
+  $('klog-tabs').innerHTML = tabs;
+}
+// 请求消息列表：连续同角色消息成组；≥4 条的组默认折叠（只渲染组头，点击才渲染组内），
+// 短组直接渲染但受 drawerMsgLimit 限制——上千条消息时 DOM 从几千降到几十，对话结构反而更清楚
+const ROLE_VAR = {instructions:'system', developer:'system'}; // 无独立配色的角色归入 system 色
+function msgRunExpand(hdr, key){
+  const body = hdr.nextElementSibling;
+  if (!body.children.length) body.innerHTML = (drawerRuns[key]||[]).map(msgHTML).join('');
+  body.classList.toggle('hidden');
+}
+function messagesHTML(list){
+  const runs = []; let cur = null;
+  list.forEach(m=>{ const r = m.role||'other'; if (cur && cur.role===r) cur.items.push(m); else { cur = {role:r, items:[m]}; runs.push(cur); } });
+  drawerRuns = {};
+  let html = '', rendered = 0, truncated = 0;
+  runs.forEach((run, ri)=>{
+    if (run.items.length >= 4){
+      const key = 'r'+ri; drawerRuns[key] = run.items;
+      const rv = ROLE_VAR[run.role] || run.role;
+      const first = msgText(run.items[0]).replace(/\s+/g,' ').slice(0,60);
+      html += '<div class="msg-run-hdr" style="border-left-color:var(--role-'+rv+'-fg,var(--dim))" onclick="msgRunExpand(this,\''+key+'\')">'
+        +'<span class="role role-'+esc(run.role)+'">'+esc(run.role)+'</span>× '+run.items.length
+        +' <span class="muted">连续消息已折叠，点击展开</span><span class="msg-preview">'+esc(first)+'</span></div>'
+        +'<div class="msg-run-body hidden"></div>';
+      return;
+    }
+    if (rendered >= drawerMsgLimit){ truncated += run.items.length; return; }
+    html += run.items.map(msgHTML).join(''); rendered += run.items.length;
+  });
+  if (truncated) html += '<div class="row" style="margin:6px 0"><button class="small" onclick="drawerMsgMore()">还有 '+truncated+' 条未渲染，加载更多</button></div>';
+  return html;
 }
 // 工具定义卡片：对齐 viewer 的 Tools 区——名称徽章 + 描述预览，展开看完整描述与参数 schema
 function toolsHTML(tools){
@@ -1871,32 +2179,47 @@ async function klogDetail(id){
       merged.content = merged.content || d.choices?.[0]?.message?.content || '';
       (d.choices?.[0]?.message?.tool_calls||[]).forEach(tc=>merged.tools.push(tc.function.name+': '+tc.function.arguments)); }catch{}
   }
-  const sseRows = chunks.map((ch,i)=>'<div class="chunk-row" style="flex-wrap:wrap"><span class="chunk-meta">#'+ch.seq+' T+'+ch.t_offset_ms+'ms Δ'+gaps[i]+'ms</span><code class="sse-data">'+esc(ch.data)+'</code></div>').join('');
-  $('klog-detail').innerHTML =
-    '<div class="row"><b>#'+c.id+' '+esc(c.model)+'</b>'+
-    '<span class="badge '+(c.error||((c.status_code??500)>=400)?'err':'ok')+'">'+(c.status_code??'失败')+(c.error?' '+esc(c.error):'')+'</span>'+
-    (c.session_id?'<span class="badge" title="'+esc(c.session_id)+'">'+esc(c.session_id.slice(0,8))+' · '+esc(c.client||'')+'</span>':'')+
-    (c.cost_cny!=null?'<span class="badge">￥'+Number(c.cost_cny).toFixed(6)+'</span>':'')+'</div>'+
-    '<div class="hint">'+fmtMS(c.started_at)+' ~ '+(c.ended_at?fmtMS(c.ended_at):'-')+' · total '+fmtDur(c.duration_ms)+' · upstream '+fmtDur(c.upstream_ms)+' · first_token '+fmtDur(c.first_byte_ms)+' · '+(c.total_tokens??'-')+' tokens'+(c.cost_cny==null&&c.cost_points==null?' · 未计价':'')+'</div>'+
-    '<div class="row" style="margin:2px 0"><span class="hint">转发 →</span><code style="white-space:normal;word-break:break-all">'+esc(c.upstream_url||(c.upstream?c.upstream:'(未记录)'))+'</code></div>'+
-    sec('请求 Headers', 1, headersHTML(c.req_headers))+
-    sec('请求体 · Messages', messages.length, messages.map(msgHTML).join('') || '<span class="hint">无 messages</span>')+
-    sec('请求体 · Tools', tools.length, toolsHTML(tools))+
-    sec('请求体 · 原始 JSON', 1, '<pre>'+esc(pre(c.req_body))+'</pre>')+
-    sec('响应 Headers', 1, headersHTML(c.resp_headers))+
-    sec('响应体 · Content', 1, '<pre>'+esc(merged.content||'（空）')+'</pre>')+
-    sec('响应体 · Reasoning', 1, '<pre>'+esc(merged.reasoning||'（空）')+'</pre>')+
-    sec('响应体 · Tool Calls', merged.tools.length, merged.tools.map(t=>'<div class="row"><code style="white-space:pre-wrap;word-break:break-all">'+esc(t)+'</code></div>').join('') || '<span class="hint">无</span>')+
-    sec('响应体 · 原始', 1, '<pre>'+esc(pre(c.resp_body))+'</pre>')+
-    sec('SSE 分包 ('+chunks.length+')', chunks.length, '<div class="chunk-bar" style="margin-bottom:8px">'+(bar||'<span class="hint">非流式</span>')+'</div>'+sseRows);
+  // 抽屉内容分四组缓存，按标签页渲染：响应(默认) | 请求 | SSE | Headers
+  // 体积大的分区（原始 JSON / SSE 分包）用函数懒加载，首次展开才生成 DOM
+  const sseRows = () => chunks.map((ch,i)=>'<div class="chunk-row" style="flex-wrap:wrap"><span class="chunk-meta">#'+ch.seq+' T+'+ch.t_offset_ms+'ms Δ'+gaps[i]+'ms</span><code class="sse-data">'+esc(ch.data)+'</code></div>').join('');
+  const resp = sec('响应体 · Content', 1, '<pre>'+esc(merged.content||'（空）')+'</pre>')
+    + sec('响应体 · Reasoning', 1, ()=>'<pre>'+esc(merged.reasoning||'（空）')+'</pre>')
+    + sec('响应体 · Tool Calls', merged.tools.length, ()=>merged.tools.map(t=>'<div class="row"><code style="white-space:pre-wrap;word-break:break-all">'+esc(t)+'</code></div>').join('') || '<span class="hint">无</span>')
+    + sec('响应体 · 原始', 1, ()=>'<pre>'+esc(pre(c.resp_body))+'</pre>');
+  const reqRest = sec('请求体 · Tools', tools.length, ()=>toolsHTML(tools))
+    + sec('请求体 · 原始 JSON', 1, ()=>'<pre>'+esc(pre(c.req_body))+'</pre>');
+  const sse = sec('SSE 分包', chunks.length, ()=>'<div class="chunk-bar" style="margin-bottom:8px">'+(bar||'<span class="hint">非流式</span>')+'</div>'+sseRows());
+  const hdr = sec('请求 Headers', 1, ()=>headersHTML(c.req_headers)) + sec('响应 Headers', 1, ()=>headersHTML(c.resp_headers));
+  drawerData = { c, chunks, messages, msgCount: messages.length, resp, reqRest, sse, hdr };
+  drawerMsgLimit = 100;
   $('drawer-title').textContent = '#'+c.id+' '+c.model+' · '+(c.status_code??'失败');
+  renderDrawer();
   openDrawer();
 }
 
-async function del(path,fn,msg){ cfAsk('确认删除？', msg||'', async()=>{ try{await api(path,{method:'DELETE'});fn&&fn();refresh();}catch(e){alert(e.message)} }); }
-async function refresh(){ await loadUpKeys(); await loadVirtualKeys(); }
+// 删除确认：等待期间按钮显示「删除中…」；后端返回「仍被引用」等说明时原样展示
+async function del(path,fn,msg){
+  cfAsk('确认删除？', msg||'', async ()=>{
+    const ok = $('cf-ok'); ok.disabled = true; ok.textContent = '删除中…';
+    try{ await api(path,{method:'DELETE'}); fn&&fn(); await refresh(); }
+    catch(e){ cfInfo('未能删除', esc(e.message)); }
+    finally{ ok.disabled = false; }
+  });
+}
+// 删除后刷新：两个列表各自兜错，一个失败不影响另一个
+async function refresh(){
+  try{ await loadUpKeys(); }catch(e){ console.error('刷新服务商与 Key 失败', e); }
+  try{ await loadVirtualKeys(); }catch(e){ console.error('刷新虚拟 Key 失败', e); }
+}
 
-(async()=>{ await loadMl(); await loadUpKeys(); loadVirtualKeys(); routeRender(); })();
+// 首屏：先渲染路由（页面骨架立即可见，数据接口再慢也不会白屏），再加载列表；
+// 每个加载器单独兜错，一个失败不影响其他、也不阻塞页面
+routeRender();
+(async()=>{
+  try{ await loadMl(); }catch(e){ console.error('服务商目录加载失败', e); }
+  try{ await loadUpKeys(); }catch(e){ console.error('服务商与 Key 加载失败', e); }
+  try{ await loadVirtualKeys(); }catch(e){ console.error('虚拟 Key 加载失败', e); }
+})();
 </script>
 <!-- 详情抽屉：点击横排行滑出 -->
 <div id="klog-drawer" class="hidden">
@@ -1908,6 +2231,7 @@ async function refresh(){ await loadUpKeys(); await loadVirtualKeys(); }
       <span style="flex:1"></span>
       <button class="small" onclick="toggleKlogFS()" title="全屏">⛶</button>
   </div>
+    <div class="tabs" id="klog-tabs"></div>
     <div id="klog-detail" class="drawer-body"><span class="hint">点击左侧请求行查看详情</span></div>
   </div>
 </div>
